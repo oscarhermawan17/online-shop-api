@@ -1,0 +1,260 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+generator erd {
+  provider = "prisma-erd-generator"
+  output   = "./ERD.svg"
+  theme    = "default"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ─── Health Check ─────────────────────────────────────────────────────────────
+model HealthCheck {
+  id        String   @id @default(uuid())
+  status    String
+  createdAt DateTime @default(now())
+
+  @@map("health_checks")
+}
+
+// ─── Enums ────────────────────────────────────────────────────────────────────
+
+enum OrderStatus {
+  pending_payment
+  waiting_confirmation
+  paid
+  shipped
+  done
+  cancelled
+  expired_unpaid
+}
+
+enum AdminRole {
+  owner
+  manager
+  staff
+}
+
+// ─── Store ────────────────────────────────────────────────────────────────────
+// Represents a tenant store profile. Each deployment typically maps
+// to one Store row via DATABASE_URL.
+
+model Store {
+  id                 String   @id @default(uuid())
+  name               String
+  logoUrl            String?
+  bannerUrl          String?
+  footerText         String?
+  whatsappNumber     String?
+  email              String?
+  address            String?
+  bankAccountName    String?
+  bankAccountNumber  String?
+  bankName           String?
+  qrisImageUrl       String?
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  // Relations
+  products  Product[]
+  orders    Order[]
+  admins    Admin[]
+
+  @@map("stores")
+}
+
+// ─── Product ──────────────────────────────────────────────────────────────────
+
+model Product {
+  id          String   @id @default(uuid())
+  storeId     String
+  name        String
+  description String?
+  basePrice   Int
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Relations
+  store    Store            @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  images   ProductImage[]
+  options  ProductOption[]
+  variants Variant[]
+
+  @@map("products")
+}
+
+// ─── ProductImage (Gallery) ───────────────────────────────────────────────────
+
+model ProductImage {
+  id        String   @id @default(uuid())
+  productId String
+  imageUrl  String
+  createdAt DateTime @default(now())
+
+  // Relations
+  product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@map("product_images")
+}
+
+// ─── ProductOption ────────────────────────────────────────────────────────────
+// Defines structured option types per product, e.g. "Color", "Size".
+
+model ProductOption {
+  id        String @id @default(uuid())
+  productId String
+  name      String // e.g. "Color", "Size"
+
+  // Relations
+  product Product              @relation(fields: [productId], references: [id], onDelete: Cascade)
+  values  ProductOptionValue[]
+
+  @@map("product_options")
+}
+
+// ─── ProductOptionValue ───────────────────────────────────────────────────────
+// Individual option values, e.g. "Black", "White", "39", "40".
+
+model ProductOptionValue {
+  id       String @id @default(uuid())
+  optionId String
+  value    String // e.g. "Black", "39"
+
+  // Relations
+  option         ProductOption        @relation(fields: [optionId], references: [id], onDelete: Cascade)
+  variantOptions VariantOptionValue[]
+
+  @@map("product_option_values")
+}
+
+// ─── Variant ──────────────────────────────────────────────────────────────────
+// Represents a specific sellable combination of option values.
+
+model Variant {
+  id            String   @id @default(uuid())
+  productId     String
+  sku           String?
+  priceOverride Int?     // null → use product.basePrice
+  stock         Int      @default(0)
+  createdAt     DateTime @default(now())
+
+  // Relations
+  product      Product              @relation(fields: [productId], references: [id], onDelete: Cascade)
+  optionValues VariantOptionValue[]
+
+  @@map("variants")
+}
+
+// ─── VariantOptionValue ───────────────────────────────────────────────────────
+// Join table: links a Variant to the specific option values it represents.
+
+model VariantOptionValue {
+  id             String @id @default(uuid())
+  variantId      String
+  optionValueId  String
+
+  // Relations
+  variant     Variant            @relation(fields: [variantId], references: [id], onDelete: Cascade)
+  optionValue ProductOptionValue @relation(fields: [optionValueId], references: [id], onDelete: Cascade)
+
+  @@unique([variantId, optionValueId])
+  @@map("variant_option_values")
+}
+
+// ─── Customer ─────────────────────────────────────────────────────────────────
+// Supports both guest (phone only) and optionally registered customers.
+
+model Customer {
+  id        String   @id @default(uuid())
+  phone     String
+  email     String?
+  createdAt DateTime @default(now())
+
+  // Relations
+  orders Order[]
+
+  @@map("customers")
+}
+
+// ─── Order ────────────────────────────────────────────────────────────────────
+
+model Order {
+  id            String      @id @default(uuid())
+  storeId       String
+  customerId    String
+  publicOrderId String      @unique // human-readable order reference
+  status        OrderStatus @default(pending_payment)
+  totalAmount   Int
+  expiresAt     DateTime?
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+
+  // Relations
+  store        Store         @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  customer     Customer      @relation(fields: [customerId], references: [id])
+  items        OrderItem[]
+  paymentProof PaymentProof?
+
+  @@map("orders")
+}
+
+// ─── OrderItem (Snapshot) ─────────────────────────────────────────────────────
+// Immutable snapshot of what was ordered. Decoupled from live product data
+// so historical orders remain accurate after product edits.
+
+model OrderItem {
+  id                 String @id @default(uuid())
+  orderId            String
+  productName        String
+  variantDescription String?
+  price              Int
+  quantity           Int
+
+  // Relations
+  order Order @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  @@map("order_items")
+}
+
+// ─── PaymentProof ─────────────────────────────────────────────────────────────
+// Customer uploads payment confirmation image (manual payment flow).
+
+model PaymentProof {
+  id         String   @id @default(uuid())
+  orderId    String   @unique // one proof per order
+  imageUrl   String
+  uploadedAt DateTime @default(now())
+
+  // Relations
+  order Order @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  @@map("payment_proofs")
+}
+
+// ─── Admin ────────────────────────────────────────────────────────────────────
+// Store admin accounts with role-based access control.
+
+model Admin {
+  id        String    @id @default(uuid())
+  storeId   String
+  name      String
+  phone     String    @unique
+  email     String?
+  password  String
+  role      AdminRole @default(owner)
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  store Store @relation(fields: [storeId], references: [id], onDelete: Cascade)
+
+  @@index([storeId])
+  @@map("admins")
+}
