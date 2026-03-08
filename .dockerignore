@@ -1,0 +1,29 @@
+# dependencies
+node_modules
+
+# git
+.git
+.gitignore
+
+# env
+.env
+.env.*
+
+# logs
+*.log
+logs
+
+# build artifacts
+dist
+build
+
+# editor
+.vscode
+.idea
+
+# OS
+.DS_Store
+
+# docker
+docker-compose.yml
+docker-compose.*
