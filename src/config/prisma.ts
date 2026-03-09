@@ -9,17 +9,25 @@ declare global {
   var __prisma: PrismaClient | undefined;
 }
 
-const prisma: PrismaClient =
-  globalThis.__prisma ??
-  new PrismaClient({
+const createPrismaClient = () => {
+  return new PrismaClient({
     log:
       process.env.NODE_ENV === 'development'
-        ? ['query', 'info', 'warn', 'error']
+        ? ['warn', 'error']
         : ['error'],
+    errorFormat: 'pretty',
   });
+};
 
-if (process.env.NODE_ENV !== 'production') {
-  globalThis.__prisma = prisma;
+let prisma: PrismaClient;
+
+if (process.env.NODE_ENV === 'production') {
+  prisma = createPrismaClient();
+} else {
+  if (!globalThis.__prisma) {
+    globalThis.__prisma = createPrismaClient();
+  }
+  prisma = globalThis.__prisma;
 }
 
 export default prisma;
