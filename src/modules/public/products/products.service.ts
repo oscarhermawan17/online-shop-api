@@ -14,7 +14,6 @@ const formatProductForPublic = (product: ProductWithRelations) => {
     ...product,
     variants: product.variants.map((variant: VariantWithOptions) => ({
       id: variant.id,
-      sku: variant.sku,
       stock: variant.stock,
       price: variant.priceOverride ?? product.basePrice,
       options: variant.optionValues.map((ov: VariantOptionValue) => ({
