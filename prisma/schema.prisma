@@ -51,6 +51,7 @@ enum AdminRole {
 model Store {
   id                 String   @id @default(uuid())
   name               String
+  description        String?
   logoUrl            String?
   bannerUrl          String?
   footerText         String?
@@ -80,6 +81,7 @@ model Product {
   name        String
   description String?
   basePrice   Int
+  isActive    Boolean  @default(true)
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
@@ -142,7 +144,8 @@ model ProductOptionValue {
 model Variant {
   id            String   @id @default(uuid())
   productId     String
-  sku           String?
+  name          String?
+  isDefault     Boolean  @default(false)
   priceOverride Int?     // null → use product.basePrice
   stock         Int      @default(0)
   createdAt     DateTime @default(now())

@@ -15,7 +15,6 @@ async function createProductWithVariants(data: {
     optionValues: Record<string, string>;
     priceOverride?: number;
     stock: number;
-    sku?: string;
   }[];
 }) {
   const product = await prisma.product.create({
@@ -56,7 +55,7 @@ async function createProductWithVariants(data: {
     const variant = await prisma.variant.create({
       data: {
         productId: product.id,
-        sku: v.sku ?? null,
+        isDefault: false,
         priceOverride: v.priceOverride ?? null,
         stock: v.stock,
       },
@@ -73,12 +72,13 @@ async function createProductWithVariants(data: {
   return product;
 }
 
-// ─── Helper: Simple product (no options, no variants) ─────────────────────────
+// ─── Helper: Simple product (no options — uses a default variant for stock) ────
 async function createSimpleProduct(data: {
   storeId: string;
   name: string;
   description: string;
   basePrice: number;
+  stock: number;
   images?: string[];
 }) {
   return prisma.product.create({
@@ -87,6 +87,9 @@ async function createSimpleProduct(data: {
       name: data.name,
       description: data.description,
       basePrice: data.basePrice,
+      variants: {
+        create: { isDefault: true, stock: data.stock },
+      },
       ...(data.images?.length
         ? { images: { createMany: { data: data.images.map((url) => ({ imageUrl: url })) } } }
         : {}),
@@ -139,9 +142,9 @@ async function main() {
       { name: 'Color', values: ['Hitam', 'Putih'] },
     ],
     variants: [
-      { optionValues: { Size: '39', Color: 'Hitam' }, stock: 10, sku: 'SFS-39-HIT' },
+      { optionValues: { Size: '39', Color: 'Hitam' }, stock: 10 },
       { optionValues: { Size: '39', Color: 'Putih' }, stock: 8, priceOverride: 365000 },
-      { optionValues: { Size: '40', Color: 'Hitam' }, stock: 12, sku: 'SFS-40-HIT' },
+      { optionValues: { Size: '40', Color: 'Hitam' }, stock: 12 },
       { optionValues: { Size: '40', Color: 'Putih' }, stock: 9, priceOverride: 365000 },
       { optionValues: { Size: '41', Color: 'Hitam' }, stock: 6 },
       { optionValues: { Size: '41', Color: 'Putih' }, stock: 5, priceOverride: 380000 },
@@ -181,7 +184,7 @@ async function main() {
       { name: 'Color', values: ['Hijau', 'Hitam'] },
     ],
     variants: [
-      { optionValues: { Size: 'M', Color: 'Hijau' }, stock: 7, sku: 'EXJ-M-HIJ' },
+      { optionValues: { Size: 'M', Color: 'Hijau' }, stock: 7 },
       { optionValues: { Size: 'M', Color: 'Hitam' }, stock: 9 },
       { optionValues: { Size: 'L', Color: 'Hijau' }, stock: 6 },
       { optionValues: { Size: 'L', Color: 'Hitam' }, stock: 11, priceOverride: 470000 },
@@ -201,7 +204,7 @@ async function main() {
     options: [{ name: 'Size', values: ['S', 'M', 'L'] }],
     variants: [
       { optionValues: { Size: 'S' }, stock: 14 },
-      { optionValues: { Size: 'M' }, stock: 15, sku: 'DCT-M' },
+      { optionValues: { Size: 'M' }, stock: 15 },
       { optionValues: { Size: 'L' }, stock: 13 },
     ],
   });
@@ -213,6 +216,7 @@ async function main() {
     name: 'Classic Cap',
     description: 'Topi snapback kasual dengan bordir logo minimalis, one size fits all.',
     basePrice: 85000,
+    stock: 20,
     images: ['https://images.unsplash.com/photo-1588850561407-ed78c282e89b?w=600'],
   });
   console.log('✅ Classic Cap created');
@@ -223,7 +227,7 @@ async function main() {
     name: 'Urban Sling Bag',
     description: 'Tas selempang anti-air kapasitas 5L, ringan dan cocok untuk daily use.',
     basePrice: 175000,
-    // intentionally no images
+    stock: 15,
   });
   console.log('✅ Urban Sling Bag created');
 
@@ -233,6 +237,7 @@ async function main() {
     name: 'Leather Belt',
     description: 'Ikat pinggang kulit sintetis premium dengan buckle silver klasik.',
     basePrice: 95000,
+    stock: 25,
     images: ['https://images.unsplash.com/photo-1553062407-98eeb64c6a62?w=600'],
   });
   console.log('✅ Leather Belt created');
@@ -243,7 +248,7 @@ async function main() {
     name: 'Cozy Beanie',
     description: 'Kupluk rajut hangat untuk musim hujan, tersedia dalam warna netral.',
     basePrice: 65000,
-    // intentionally no images
+    stock: 30,
   });
   console.log('✅ Cozy Beanie created');
   } // end if (isNewStore)

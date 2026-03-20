@@ -240,6 +240,10 @@ export const getOrderStatus = async (publicOrderId: string) => {
         select: {
           name: true,
           whatsappNumber: true,
+          bankName: true,
+          bankAccountNumber: true,
+          bankAccountName: true,
+          qrisImageUrl: true,
         },
       },
     },

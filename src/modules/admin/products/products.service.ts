@@ -7,12 +7,15 @@ export interface CreateProductInput {
   name: string;
   description?: string;
   basePrice: number;
+  stock: number;
 }
 
 export interface UpdateProductInput {
   name?: string;
   description?: string;
   basePrice?: number;
+  isActive?: boolean;
+  stock?: number;
 }
 
 export interface CreateProductImageInput {
@@ -25,57 +28,68 @@ export interface CreateProductOptionInput {
 }
 
 export interface CreateVariantInput {
-  sku?: string;
+  name?: string;
   priceOverride?: number;
   stock: number;
-  optionValueIds: string[];
+  optionValueIds?: string[];
+}
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
+const productInclude = {
+  images: true,
+  options: { include: { values: true } },
+  variants: { include: { optionValues: { include: { optionValue: true } } } },
+};
+
+function withStock<T extends { variants: Array<{ isDefault: boolean; stock: number }> }>(
+  product: T,
+): T & { stock: number } {
+  const defaultVariant = product.variants.find((v) => v.isDefault);
+  return { ...product, stock: defaultVariant?.stock ?? 0 };
 }
 
 // ─── Product CRUD ─────────────────────────────────────────────────────────────
 
 export const listProducts = async (storeId: string) => {
-  return prisma.product.findMany({
+  const products = await prisma.product.findMany({
     where: { storeId },
-    include: {
-      images: true,
-      options: { include: { values: true } },
-      variants: { include: { optionValues: { include: { optionValue: true } } } },
-    },
+    include: productInclude,
     orderBy: { createdAt: 'desc' },
   });
+  return products.map(withStock);
 };
 
 export const getProduct = async (storeId: string, productId: string) => {
   const product = await prisma.product.findFirst({
     where: { id: productId, storeId },
-    include: {
-      images: true,
-      options: { include: { values: true } },
-      variants: { include: { optionValues: { include: { optionValue: true } } } },
-    },
+    include: productInclude,
   });
 
   if (!product) {
     throw new AppError('Product not found', 404);
   }
 
-  return product;
+  return withStock(product);
 };
 
 export const createProduct = async (storeId: string, data: CreateProductInput) => {
-  return prisma.product.create({
+  const product = await prisma.product.create({
     data: {
       storeId,
       name: data.name,
       description: data.description,
       basePrice: data.basePrice,
+      variants: {
+        create: {
+          isDefault: true,
+          stock: data.stock,
+        },
+      },
     },
-    include: {
-      images: true,
-      options: { include: { values: true } },
-      variants: true,
-    },
+    include: productInclude,
   });
+  return withStock(product);
 };
 
 export const updateProduct = async (
@@ -83,27 +97,38 @@ export const updateProduct = async (
   productId: string,
   data: UpdateProductInput,
 ) => {
-  // Ensure product belongs to store
   await getProduct(storeId, productId);
 
-  return prisma.product.update({
+  const { stock, ...productData } = data;
+
+  await prisma.product.update({
     where: { id: productId },
-    data,
-    include: {
-      images: true,
-      options: { include: { values: true } },
-      variants: { include: { optionValues: { include: { optionValue: true } } } },
-    },
+    data: productData,
   });
+
+  if (stock !== undefined) {
+    const defaultVariant = await prisma.variant.findFirst({
+      where: { productId, isDefault: true },
+    });
+
+    if (defaultVariant) {
+      await prisma.variant.update({
+        where: { id: defaultVariant.id },
+        data: { stock },
+      });
+    } else {
+      await prisma.variant.create({
+        data: { productId, isDefault: true, stock },
+      });
+    }
+  }
+
+  return getProduct(storeId, productId);
 };
 
 export const deleteProduct = async (storeId: string, productId: string) => {
-  // Ensure product belongs to store
   await getProduct(storeId, productId);
-
-  await prisma.product.delete({
-    where: { id: productId },
-  });
+  await prisma.product.delete({ where: { id: productId } });
 };
 
 // ─── Product Images ───────────────────────────────────────────────────────────
@@ -113,7 +138,6 @@ export const addProductImage = async (
   productId: string,
   data: CreateProductImageInput,
 ) => {
-  // Ensure product belongs to store
   await getProduct(storeId, productId);
 
   return prisma.productImage.create({
@@ -129,7 +153,6 @@ export const deleteProductImage = async (
   productId: string,
   imageId: string,
 ) => {
-  // Ensure product belongs to store
   await getProduct(storeId, productId);
 
   const image = await prisma.productImage.findFirst({
@@ -140,9 +163,7 @@ export const deleteProductImage = async (
     throw new AppError('Image not found', 404);
   }
 
-  await prisma.productImage.delete({
-    where: { id: imageId },
-  });
+  await prisma.productImage.delete({ where: { id: imageId } });
 };
 
 // ─── Product Options ──────────────────────────────────────────────────────────
@@ -152,7 +173,6 @@ export const addProductOption = async (
   productId: string,
   data: CreateProductOptionInput,
 ) => {
-  // Ensure product belongs to store
   await getProduct(storeId, productId);
 
   return prisma.productOption.create({
@@ -174,7 +194,6 @@ export const deleteProductOption = async (
   productId: string,
   optionId: string,
 ) => {
-  // Ensure product belongs to store
   await getProduct(storeId, productId);
 
   const option = await prisma.productOption.findFirst({
@@ -185,9 +204,7 @@ export const deleteProductOption = async (
     throw new AppError('Option not found', 404);
   }
 
-  await prisma.productOption.delete({
-    where: { id: optionId },
-  });
+  await prisma.productOption.delete({ where: { id: optionId } });
 };
 
 // ─── Product Variants ─────────────────────────────────────────────────────────
@@ -197,20 +214,24 @@ export const addProductVariant = async (
   productId: string,
   data: CreateVariantInput,
 ) => {
-  // Ensure product belongs to store
   await getProduct(storeId, productId);
 
   return prisma.variant.create({
     data: {
       productId,
-      sku: data.sku,
+      name: data.name,
       priceOverride: data.priceOverride,
       stock: data.stock,
-      optionValues: {
-        createMany: {
-          data: data.optionValueIds.map((optionValueId) => ({ optionValueId })),
-        },
-      },
+      isDefault: false,
+      ...(data.optionValueIds?.length
+        ? {
+            optionValues: {
+              createMany: {
+                data: data.optionValueIds.map((optionValueId) => ({ optionValueId })),
+              },
+            },
+          }
+        : {}),
     },
     include: { optionValues: { include: { optionValue: true } } },
   });
@@ -220,9 +241,8 @@ export const updateProductVariant = async (
   storeId: string,
   productId: string,
   variantId: string,
-  data: { sku?: string; priceOverride?: number | null; stock?: number },
+  data: { name?: string; priceOverride?: number | null; stock?: number },
 ) => {
-  // Ensure product belongs to store
   await getProduct(storeId, productId);
 
   const variant = await prisma.variant.findFirst({
@@ -245,7 +265,6 @@ export const deleteProductVariant = async (
   productId: string,
   variantId: string,
 ) => {
-  // Ensure product belongs to store
   await getProduct(storeId, productId);
 
   const variant = await prisma.variant.findFirst({
@@ -256,7 +275,9 @@ export const deleteProductVariant = async (
     throw new AppError('Variant not found', 404);
   }
 
-  await prisma.variant.delete({
-    where: { id: variantId },
-  });
+  if (variant.isDefault) {
+    throw new AppError('Cannot delete the default variant', 400);
+  }
+
+  await prisma.variant.delete({ where: { id: variantId } });
 };

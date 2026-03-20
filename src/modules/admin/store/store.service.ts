@@ -5,6 +5,7 @@ import { AppError } from '../../../middlewares/error.middleware';
 
 export interface UpdateStoreInput {
   name?: string;
+  description?: string;
   logoUrl?: string;
   bannerUrl?: string;
   footerText?: string;
