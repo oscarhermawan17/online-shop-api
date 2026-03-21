@@ -11,6 +11,7 @@ import docsRoutes from './modules/docs/docs.routes';
 import authRoutes from './modules/auth/auth.routes';
 
 // Public routes
+import publicStoreRoutes from './modules/store/store.public.routes';
 import publicProductsRoutes from './modules/public/products/products.routes';
 import checkoutRoutes from './modules/public/checkout/checkout.routes';
 
@@ -41,6 +42,7 @@ app.use('/api/health', healthRoutes);
 app.use('/api/auth', authRoutes);
 
 // Public APIs
+app.use('/api/store', publicStoreRoutes);
 app.use('/api/products', publicProductsRoutes);
 app.use('/api', checkoutRoutes);
 
