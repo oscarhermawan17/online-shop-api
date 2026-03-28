@@ -9,6 +9,7 @@ import { errorMiddleware } from './middlewares/error.middleware';
 import healthRoutes from './modules/health/health.routes';
 import docsRoutes from './modules/docs/docs.routes';
 import authRoutes from './modules/auth/auth.routes';
+import customerAuthRoutes from './modules/customer-auth/customer-auth.routes';
 
 // Public routes
 import publicStoreRoutes from './modules/store/store.public.routes';
@@ -19,6 +20,10 @@ import checkoutRoutes from './modules/public/checkout/checkout.routes';
 import adminStoreRoutes from './modules/admin/store/store.routes';
 import adminProductsRoutes from './modules/admin/products/products.routes';
 import adminOrdersRoutes from './modules/admin/orders/orders.routes';
+import adminCustomerRoutes from './modules/admin/customers/customers.routes';
+
+// Customer routes
+import customerOrdersRoutes from './modules/customer/orders/orders.routes';
 
 const app: Application = express();
 
@@ -40,6 +45,7 @@ app.use('/api', docsRoutes);
 // ─── API Routes ───────────────────────────────────────────────────────────────
 app.use('/api/health', healthRoutes);
 app.use('/api/auth', authRoutes);
+app.use('/api/customer-auth', customerAuthRoutes);
 
 // Public APIs
 app.use('/api/store', publicStoreRoutes);
@@ -50,6 +56,10 @@ app.use('/api', checkoutRoutes);
 app.use('/api/admin/store', adminStoreRoutes);
 app.use('/api/admin/products', adminProductsRoutes);
 app.use('/api/admin/orders', adminOrdersRoutes);
+app.use('/api/admin/customers', adminCustomerRoutes);
+
+// Customer APIs (customer JWT required)
+app.use('/api/customer/orders', customerOrdersRoutes);
 
 // ─── 404 Handler ─────────────────────────────────────────────────────────────
 app.use((_req: Request, res: Response) => {

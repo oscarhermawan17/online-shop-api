@@ -178,9 +178,12 @@ model VariantOptionValue {
 
 model Customer {
   id        String   @id @default(uuid())
-  phone     String
+  name      String?
+  phone     String   @unique
   email     String?
+  password  String?  // null = guest, non-null = registered
   createdAt DateTime @default(now())
+  updatedAt DateTime @default(now()) @updatedAt
 
   // Relations
   orders Order[]

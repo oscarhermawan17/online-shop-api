@@ -270,6 +270,31 @@ async function main() {
   });
   console.log(`✅ Default admin upserted: ${admin.name} (${admin.email})`);
 
+  // ─── Seed Customers ───────────────────────────────────────────────────────────
+  const customerPassword = await bcrypt.hash('password123!', 10);
+
+  const customerData = [
+    { name: 'Budi Santoso',   phone: '6281100000001', email: 'budi@example.com' },
+    { name: 'Sari Dewi',      phone: '6281100000002', email: 'sari@example.com' },
+    { name: 'Ahmad Fauzi',    phone: '6281100000003', email: null },
+    { name: 'Rina Wulandari', phone: '6281100000004', email: 'rina@example.com' },
+    { name: 'Doni Prasetyo',  phone: '6281100000005', email: null },
+    { name: 'Maya Kusuma',    phone: '6281100000006', email: 'maya@example.com' },
+    { name: 'Hendra Gunawan', phone: '6281100000007', email: null },
+    { name: 'Fitri Rahayu',   phone: '6281100000008', email: 'fitri@example.com' },
+    { name: 'Rizky Aditya',   phone: '6281100000009', email: null },
+    { name: 'Nur Hidayah',    phone: '6281100000010', email: 'nur@example.com' },
+  ];
+
+  for (const c of customerData) {
+    await prisma.customer.upsert({
+      where: { phone: c.phone },
+      update: {},
+      create: { name: c.name, phone: c.phone, email: c.email, password: customerPassword },
+    });
+  }
+  console.log('✅ 10 customers seeded (password: password123!)');
+
   console.log('\n🎉 Seed completed successfully!');
 }
 
