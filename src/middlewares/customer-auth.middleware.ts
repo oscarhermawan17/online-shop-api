@@ -18,6 +18,24 @@ export interface CustomerAuthRequest extends Request {
 
 // ─── Customer JWT Auth Middleware ─────────────────────────────────────────────
 
+export const optionalCustomerAuth = (
+  req: CustomerAuthRequest,
+  _res: Response,
+  next: NextFunction,
+): void => {
+  const authHeader = req.headers.authorization;
+  if (authHeader?.startsWith('Bearer ')) {
+    const token = authHeader.split(' ')[1];
+    const jwtSecret = process.env.CUSTOMER_JWT_SECRET;
+    if (jwtSecret) {
+      try {
+        req.customer = jwt.verify(token, jwtSecret) as CustomerJwtPayload;
+      } catch { /* ignore invalid token, treat as guest */ }
+    }
+  }
+  next();
+};
+
 export const requireCustomerAuth = (
   req: CustomerAuthRequest,
   _res: Response,

@@ -14,6 +14,7 @@ export interface CheckoutInput {
   customerPhone: string;
   customerEmail?: string;
   items: CheckoutItem[];
+  authenticatedCustomerId?: string;
 }
 
 export interface PaymentProofInput {
@@ -31,7 +32,7 @@ const generatePublicOrderId = (): string => {
 // ─── Service ──────────────────────────────────────────────────────────────────
 
 export const checkout = async (input: CheckoutInput) => {
-  const { storeId, customerPhone, customerEmail, items } = input;
+  const { storeId, customerPhone, customerEmail, items, authenticatedCustomerId } = input;
 
   // Validate store exists
   const store = await prisma.store.findUnique({
@@ -42,24 +43,34 @@ export const checkout = async (input: CheckoutInput) => {
     throw new AppError('Store not found', 404);
   }
 
-  // Find or create customer
-  let customer = await prisma.customer.findFirst({
-    where: { phone: customerPhone },
-  });
+  // Find or create customer — prefer authenticated customer when logged in
+  let customer;
+  if (authenticatedCustomerId) {
+    customer = await prisma.customer.findUnique({
+      where: { id: authenticatedCustomerId },
+    });
+    if (!customer) {
+      throw new AppError('Authenticated customer not found', 404);
+    }
+  } else {
+    customer = await prisma.customer.findFirst({
+      where: { phone: customerPhone },
+    });
 
-  if (!customer) {
-    customer = await prisma.customer.create({
-      data: {
-        phone: customerPhone,
-        email: customerEmail,
-      },
-    });
-  } else if (customerEmail && !customer.email) {
-    // Update email if provided and not set
-    customer = await prisma.customer.update({
-      where: { id: customer.id },
-      data: { email: customerEmail },
-    });
+    if (!customer) {
+      customer = await prisma.customer.create({
+        data: {
+          phone: customerPhone,
+          email: customerEmail,
+        },
+      });
+    } else if (customerEmail && !customer.email) {
+      // Update email if provided and not set
+      customer = await prisma.customer.update({
+        where: { id: customer.id },
+        data: { email: customerEmail },
+      });
+    }
   }
 
   // Process items and calculate total

@@ -1,17 +1,21 @@
-import { Request, Response, NextFunction } from 'express';
+import { Response, NextFunction } from 'express';
 
 import { sendSuccess } from '../../../utils/response';
 import * as checkoutService from './checkout.service';
+import { CustomerAuthRequest } from '../../../middlewares/customer-auth.middleware';
 
 // ─── POST /checkout ───────────────────────────────────────────────────────────
 
 export const checkout = async (
-  req: Request,
+  req: CustomerAuthRequest,
   res: Response,
   next: NextFunction,
 ): Promise<void> => {
   try {
-    const result = await checkoutService.checkout(req.body);
+    const result = await checkoutService.checkout({
+      ...req.body,
+      authenticatedCustomerId: req.customer?.customerId,
+    });
     sendSuccess(res, result, 'Order created successfully', 201);
   } catch (error) {
     next(error);
