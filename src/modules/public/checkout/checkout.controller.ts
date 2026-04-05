@@ -1,4 +1,4 @@
-import { Response, NextFunction } from 'express';
+import { Request, Response, NextFunction } from 'express';
 
 import { sendSuccess } from '../../../utils/response';
 import * as checkoutService from './checkout.service';
