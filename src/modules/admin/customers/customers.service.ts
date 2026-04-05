@@ -15,6 +15,21 @@ export interface CreateCustomerInput {
 
 // ─── Service ──────────────────────────────────────────────────────────────────
 
+export const listCustomers = async (storeId: string) => {
+  return prisma.customer.findMany({
+    where: { storeId },
+    select: {
+      id: true,
+      name: true,
+      phone: true,
+      email: true,
+      isActive: true,
+      createdAt: true,
+    },
+    orderBy: { createdAt: 'desc' },
+  });
+};
+
 export const createCustomer = async (input: CreateCustomerInput) => {
   const { storeId, name, phone, email, password } = input;
 
@@ -30,8 +45,23 @@ export const createCustomer = async (input: CreateCustomerInput) => {
 
   const customer = await prisma.customer.create({
     data: { storeId, name, phone, email: email ?? null, password: hashedPassword },
-    select: { id: true, name: true, phone: true, email: true, createdAt: true },
+    select: { id: true, name: true, phone: true, email: true, isActive: true, createdAt: true },
   });
 
   return customer;
+};
+
+export const toggleCustomerStatus = async (customerId: string, storeId: string) => {
+  const customer = await prisma.customer.findFirst({
+    where: { id: customerId, storeId },
+  });
+  if (!customer) {
+    throw new AppError('Customer not found', 404);
+  }
+
+  return prisma.customer.update({
+    where: { id: customerId },
+    data: { isActive: !customer.isActive },
+    select: { id: true, isActive: true },
+  });
 };
