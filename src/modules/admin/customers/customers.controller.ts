@@ -40,7 +40,7 @@ export const toggleStatus = async (
 ): Promise<void> => {
   try {
     const storeId = req.user!.storeId;
-    const { id } = req.params;
+    const { id } = req.params as { id: string };
     const result = await customersService.toggleCustomerStatus(id, storeId);
     sendSuccess(res, result, 'Customer status updated successfully');
   } catch (error) {
