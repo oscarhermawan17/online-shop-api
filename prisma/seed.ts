@@ -24,7 +24,7 @@ async function createProductWithVariants(data: {
       description: data.description,
       basePrice: data.basePrice,
       ...(data.images?.length
-        ? { images: { createMany: { data: data.images.map((url) => ({ imageUrl: url })) } } }
+        ? { images: { createMany: { data: data.images.map((url) => ({ storeId: data.storeId, imageUrl: url })) } } }
         : {}),
     },
   });
@@ -35,10 +35,11 @@ async function createProductWithVariants(data: {
   for (const opt of data.options) {
     const option = await prisma.productOption.create({
       data: {
+        storeId: data.storeId,
         productId: product.id,
         name: opt.name,
         values: {
-          createMany: { data: opt.values.map((v) => ({ value: v })) },
+          createMany: { data: opt.values.map((v) => ({ storeId: data.storeId, value: v })) },
         },
       },
       include: { values: true },
@@ -54,6 +55,7 @@ async function createProductWithVariants(data: {
   for (const v of data.variants) {
     const variant = await prisma.variant.create({
       data: {
+        storeId: data.storeId,
         productId: product.id,
         isDefault: false,
         priceOverride: v.priceOverride ?? null,
@@ -88,10 +90,10 @@ async function createSimpleProduct(data: {
       description: data.description,
       basePrice: data.basePrice,
       variants: {
-        create: { isDefault: true, stock: data.stock },
+        create: { storeId: data.storeId, isDefault: true, stock: data.stock },
       },
       ...(data.images?.length
-        ? { images: { createMany: { data: data.images.map((url) => ({ imageUrl: url })) } } }
+        ? { images: { createMany: { data: data.images.map((url) => ({ storeId: data.storeId, imageUrl: url })) } } }
         : {}),
     },
   });
@@ -288,9 +290,9 @@ async function main() {
 
   for (const c of customerData) {
     await prisma.customer.upsert({
-      where: { phone: c.phone },
+      where: { storeId_phone: { storeId: store.id, phone: c.phone } },
       update: {},
-      create: { name: c.name, phone: c.phone, email: c.email, password: customerPassword },
+      create: { storeId: store.id, name: c.name, phone: c.phone, email: c.email, password: customerPassword },
     });
   }
   console.log('✅ 10 customers seeded (password: password123!)');

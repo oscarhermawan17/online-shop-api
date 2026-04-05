@@ -3,17 +3,14 @@ import jwt from 'jsonwebtoken';
 
 import prisma from '../../config/prisma';
 import { AppError } from '../../middlewares/error.middleware';
+import { CustomerJwtPayload } from '../../middlewares/customer-auth.middleware';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 export interface CustomerLoginInput {
+  storeId: string;
   identifier: string; // phone or email
   password: string;
-}
-
-export interface CustomerJwtPayload {
-  customerId: string;
-  phone: string;
 }
 
 export interface CustomerLoginResult {
@@ -29,11 +26,12 @@ export interface CustomerLoginResult {
 // ─── Service ──────────────────────────────────────────────────────────────────
 
 export const login = async (input: CustomerLoginInput): Promise<CustomerLoginResult> => {
-  const { identifier, password } = input;
+  const { storeId, identifier, password } = input;
 
-  // Find customer by phone OR email
+  // Find customer by phone OR email within the store
   const customer = await prisma.customer.findFirst({
     where: {
+      storeId,
       OR: [{ phone: identifier }, { email: identifier }],
     },
   });
@@ -58,6 +56,7 @@ export const login = async (input: CustomerLoginInput): Promise<CustomerLoginRes
   const payload: CustomerJwtPayload = {
     customerId: customer.id,
     phone: customer.phone,
+    storeId: customer.storeId,
   };
 
   const token = jwt.sign(payload, jwtSecret, { expiresIn: '7d' });

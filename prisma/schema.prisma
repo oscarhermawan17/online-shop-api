@@ -66,9 +66,16 @@ model Store {
   updatedAt          DateTime @updatedAt
 
   // Relations
-  products  Product[]
-  orders    Order[]
-  admins    Admin[]
+  products           Product[]
+  orders             Order[]
+  admins             Admin[]
+  customers          Customer[]
+  productImages      ProductImage[]
+  productOptions     ProductOption[]
+  productOptionValues ProductOptionValue[]
+  variants           Variant[]
+  orderItems         OrderItem[]
+  paymentProofs      PaymentProof[]
 
   @@map("stores")
 }
@@ -91,6 +98,7 @@ model Product {
   options  ProductOption[]
   variants Variant[]
 
+  @@index([storeId])
   @@map("products")
 }
 
@@ -98,13 +106,16 @@ model Product {
 
 model ProductImage {
   id        String   @id @default(uuid())
+  storeId   String
   productId String
   imageUrl  String
   createdAt DateTime @default(now())
 
   // Relations
+  store   Store   @relation(fields: [storeId], references: [id], onDelete: Cascade)
   product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
 
+  @@index([storeId])
   @@map("product_images")
 }
 
@@ -113,13 +124,16 @@ model ProductImage {
 
 model ProductOption {
   id        String @id @default(uuid())
+  storeId   String
   productId String
   name      String // e.g. "Color", "Size"
 
   // Relations
+  store   Store                @relation(fields: [storeId], references: [id], onDelete: Cascade)
   product Product              @relation(fields: [productId], references: [id], onDelete: Cascade)
   values  ProductOptionValue[]
 
+  @@index([storeId])
   @@map("product_options")
 }
 
@@ -128,13 +142,16 @@ model ProductOption {
 
 model ProductOptionValue {
   id       String @id @default(uuid())
+  storeId  String
   optionId String
   value    String // e.g. "Black", "39"
 
   // Relations
+  store          Store                @relation(fields: [storeId], references: [id], onDelete: Cascade)
   option         ProductOption        @relation(fields: [optionId], references: [id], onDelete: Cascade)
   variantOptions VariantOptionValue[]
 
+  @@index([storeId])
   @@map("product_option_values")
 }
 
@@ -143,6 +160,7 @@ model ProductOptionValue {
 
 model Variant {
   id            String   @id @default(uuid())
+  storeId       String
   productId     String
   name          String?
   isDefault     Boolean  @default(false)
@@ -151,9 +169,11 @@ model Variant {
   createdAt     DateTime @default(now())
 
   // Relations
+  store        Store                @relation(fields: [storeId], references: [id], onDelete: Cascade)
   product      Product              @relation(fields: [productId], references: [id], onDelete: Cascade)
   optionValues VariantOptionValue[]
 
+  @@index([storeId])
   @@map("variants")
 }
 
@@ -174,20 +194,25 @@ model VariantOptionValue {
 }
 
 // ─── Customer ─────────────────────────────────────────────────────────────────
-// Supports both guest (phone only) and optionally registered customers.
+// Store-scoped: each store has its own customer pool.
+// Same phone number can register independently at different stores.
 
 model Customer {
   id        String   @id @default(uuid())
+  storeId   String
   name      String?
-  phone     String   @unique
+  phone     String
   email     String?
   password  String?  // null = guest, non-null = registered
   createdAt DateTime @default(now())
   updatedAt DateTime @default(now()) @updatedAt
 
   // Relations
+  store  Store   @relation(fields: [storeId], references: [id], onDelete: Cascade)
   orders Order[]
 
+  @@unique([storeId, phone])
+  @@index([storeId])
   @@map("customers")
 }
 
@@ -210,6 +235,8 @@ model Order {
   items        OrderItem[]
   paymentProof PaymentProof?
 
+  @@index([storeId])
+  @@index([customerId])
   @@map("orders")
 }
 
@@ -219,6 +246,7 @@ model Order {
 
 model OrderItem {
   id                 String @id @default(uuid())
+  storeId            String
   orderId            String
   productName        String
   variantDescription String?
@@ -226,8 +254,10 @@ model OrderItem {
   quantity           Int
 
   // Relations
+  store Store @relation(fields: [storeId], references: [id], onDelete: Cascade)
   order Order @relation(fields: [orderId], references: [id], onDelete: Cascade)
 
+  @@index([storeId])
   @@map("order_items")
 }
 
@@ -236,13 +266,16 @@ model OrderItem {
 
 model PaymentProof {
   id         String   @id @default(uuid())
+  storeId    String
   orderId    String   @unique // one proof per order
   imageUrl   String
   uploadedAt DateTime @default(now())
 
   // Relations
+  store Store @relation(fields: [storeId], references: [id], onDelete: Cascade)
   order Order @relation(fields: [orderId], references: [id], onDelete: Cascade)
 
+  @@index([storeId])
   @@map("payment_proofs")
 }
 

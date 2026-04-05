@@ -8,6 +8,7 @@ import { AppError } from './error.middleware';
 export interface CustomerJwtPayload {
   customerId: string;
   phone: string;
+  storeId: string;
 }
 
 // ─── Augment Express Request ──────────────────────────────────────────────────

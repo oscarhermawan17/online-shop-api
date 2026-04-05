@@ -53,13 +53,14 @@ export const checkout = async (input: CheckoutInput) => {
       throw new AppError('Authenticated customer not found', 404);
     }
   } else {
-    customer = await prisma.customer.findFirst({
-      where: { phone: customerPhone },
+    customer = await prisma.customer.findUnique({
+      where: { storeId_phone: { storeId, phone: customerPhone } },
     });
 
     if (!customer) {
       customer = await prisma.customer.create({
         data: {
+          storeId,
           phone: customerPhone,
           email: customerEmail,
         },
@@ -161,7 +162,7 @@ export const checkout = async (input: CheckoutInput) => {
       totalAmount,
       expiresAt,
       items: {
-        createMany: { data: orderItems },
+        createMany: { data: orderItems.map((item) => ({ ...item, storeId })) },
       },
     },
     include: {
@@ -217,6 +218,7 @@ export const uploadPaymentProof = async (
     // Create new proof
     await prisma.paymentProof.create({
       data: {
+        storeId: order.storeId,
         orderId: order.id,
         imageUrl: input.imageUrl,
       },

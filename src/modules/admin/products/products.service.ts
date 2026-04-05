@@ -82,6 +82,7 @@ export const createProduct = async (storeId: string, data: CreateProductInput) =
       basePrice: data.basePrice,
       variants: {
         create: {
+          storeId,
           isDefault: true,
           stock: data.stock,
         },
@@ -118,7 +119,7 @@ export const updateProduct = async (
       });
     } else {
       await prisma.variant.create({
-        data: { productId, isDefault: true, stock },
+        data: { storeId, productId, isDefault: true, stock },
       });
     }
   }
@@ -142,6 +143,7 @@ export const addProductImage = async (
 
   return prisma.productImage.create({
     data: {
+      storeId,
       productId,
       imageUrl: data.imageUrl,
     },
@@ -177,11 +179,12 @@ export const addProductOption = async (
 
   return prisma.productOption.create({
     data: {
+      storeId,
       productId,
       name: data.name,
       values: {
         createMany: {
-          data: data.values.map((value) => ({ value })),
+          data: data.values.map((value) => ({ storeId, value })),
         },
       },
     },
@@ -218,6 +221,7 @@ export const addProductVariant = async (
 
   return prisma.variant.create({
     data: {
+      storeId,
       productId,
       name: data.name,
       priceOverride: data.priceOverride,

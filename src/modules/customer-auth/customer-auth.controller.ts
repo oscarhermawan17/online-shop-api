@@ -9,8 +9,8 @@ export const login = async (
   next: NextFunction,
 ): Promise<void> => {
   try {
-    const { identifier, password } = req.body;
-    const result = await customerAuthService.login({ identifier, password });
+    const { storeId, identifier, password } = req.body;
+    const result = await customerAuthService.login({ storeId, identifier, password });
     sendSuccess(res, result, 'Login successful', 200);
   } catch (error) {
     next(error);
