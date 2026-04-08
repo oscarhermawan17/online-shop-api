@@ -3,6 +3,7 @@ dotenv.config();
 
 import app from './app';
 import prisma from './config/prisma';
+import { ensureDatabaseExists } from './utils/db-init';
 
 const PORT = process.env.PORT ?? 3000;
 const NODE_ENV = process.env.NODE_ENV ?? 'development';
@@ -11,6 +12,9 @@ let server: any;
 
 const startServer = async (): Promise<void> => {
   try {
+    // 🗄️ Automatically create DB and tables if they don't exist
+    await ensureDatabaseExists();
+
     // Verify database connection on startup
     await prisma.$connect();
     console.log('✅ Database connected successfully');

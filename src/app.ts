@@ -21,6 +21,8 @@ import adminStoreRoutes from './modules/admin/store/store.routes';
 import adminProductsRoutes from './modules/admin/products/products.routes';
 import adminOrdersRoutes from './modules/admin/orders/orders.routes';
 import adminCustomerRoutes from './modules/admin/customers/customers.routes';
+import adminShippingZonesRoutes from './modules/admin/shipping-zones/shipping-zones.routes';
+import publicShippingZonesRoutes from './modules/store/shipping-zones.public.routes';
 
 // Customer routes
 import customerOrdersRoutes from './modules/customer/orders/orders.routes';
@@ -51,12 +53,14 @@ app.use('/api/customer-auth', customerAuthRoutes);
 app.use('/api/store', publicStoreRoutes);
 app.use('/api/products', publicProductsRoutes);
 app.use('/api', checkoutRoutes);
+app.use('/api/shipping-zones', publicShippingZonesRoutes);
 
 // Admin APIs (JWT required)
 app.use('/api/admin/store', adminStoreRoutes);
 app.use('/api/admin/products', adminProductsRoutes);
 app.use('/api/admin/orders', adminOrdersRoutes);
 app.use('/api/admin/customers', adminCustomerRoutes);
+app.use('/api/admin/shipping-zones', adminShippingZonesRoutes);
 
 // Customer APIs (customer JWT required)
 app.use('/api/customer/orders', customerOrdersRoutes);
