@@ -70,6 +70,7 @@ model Store {
   orders             Order[]
   admins             Admin[]
   customers          Customer[]
+  customerAddresses  CustomerAddress[]
   productImages      ProductImage[]
   productOptions     ProductOption[]
   productOptionValues ProductOptionValue[]
@@ -210,26 +211,60 @@ model Customer {
   updatedAt DateTime @default(now()) @updatedAt
 
   // Relations
-  store  Store   @relation(fields: [storeId], references: [id], onDelete: Cascade)
-  orders Order[]
+  store     Store             @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  orders    Order[]
+  addresses CustomerAddress[]
 
   @@unique([storeId, phone])
   @@index([storeId])
   @@map("customers")
 }
 
+// ─── Customer Address ───────────────────────────────────────────────────────
+// Saved delivery addresses for a customer.
+
+model CustomerAddress {
+  id         String   @id @default(uuid())
+  storeId    String
+  customerId String
+  label      String   // e.g. "Rumah", "Kantor"
+  recipient  String   // recipient name
+  phone      String   // recipient phone
+  address    String   // full address text
+  district   String?  // kecamatan name (for shipping zone matching)
+  lat        Float?
+  lng        Float?
+  isDefault  Boolean  @default(false)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  // Relations
+  store    Store    @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  customer Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+
+  @@index([storeId])
+  @@index([customerId])
+  @@map("customer_addresses")
+}
+
 // ─── Order ────────────────────────────────────────────────────────────────────
 
 model Order {
-  id            String      @id @default(uuid())
-  storeId       String
-  customerId    String
-  publicOrderId String      @unique // human-readable order reference
-  status        OrderStatus @default(pending_payment)
-  totalAmount   Int
-  expiresAt     DateTime?
-  createdAt     DateTime    @default(now())
-  updatedAt     DateTime    @updatedAt
+  id              String      @id @default(uuid())
+  storeId         String
+  customerId      String
+  publicOrderId   String      @unique // human-readable order reference
+  status          OrderStatus @default(pending_payment)
+  customerName    String?     // snapshot at order time
+  customerPhone   String?     // snapshot at order time
+  customerAddress String?     // delivery address or store address for pickup
+  deliveryMethod  String?     // 'pickup' | 'delivery'
+  notes           String?
+  shippingCost    Int         @default(0)
+  totalAmount     Int
+  expiresAt       DateTime?
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
 
   // Relations
   store        Store         @relation(fields: [storeId], references: [id], onDelete: Cascade)

@@ -11,8 +11,13 @@ export interface CheckoutItem {
 
 export interface CheckoutInput {
   storeId: string;
+  customerName: string;
   customerPhone: string;
   customerEmail?: string;
+  customerAddress?: string;
+  deliveryMethod?: string;
+  notes?: string;
+  shippingCost?: number;
   items: CheckoutItem[];
   authenticatedCustomerId?: string;
 }
@@ -32,7 +37,11 @@ const generatePublicOrderId = (): string => {
 // ─── Service ──────────────────────────────────────────────────────────────────
 
 export const checkout = async (input: CheckoutInput) => {
-  const { storeId, customerPhone, customerEmail, items, authenticatedCustomerId } = input;
+  const {
+    storeId, customerName, customerPhone, customerEmail,
+    customerAddress, deliveryMethod, notes, shippingCost,
+    items, authenticatedCustomerId,
+  } = input;
 
   // Validate store exists
   const store = await prisma.store.findUnique({
@@ -153,13 +162,21 @@ export const checkout = async (input: CheckoutInput) => {
   // Create order with expiry (24 hours)
   const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
 
+  const finalShippingCost = shippingCost ?? 0;
+
   const order = await prisma.order.create({
     data: {
       storeId,
       customerId: customer.id,
       publicOrderId: generatePublicOrderId(),
       status: 'pending_payment',
-      totalAmount,
+      customerName: customerName || customer.name || customerPhone,
+      customerPhone,
+      customerAddress: customerAddress || null,
+      deliveryMethod: deliveryMethod || null,
+      notes: notes || null,
+      shippingCost: finalShippingCost,
+      totalAmount: totalAmount + finalShippingCost,
       expiresAt,
       items: {
         createMany: { data: orderItems.map((item) => ({ ...item, storeId })) },
@@ -269,6 +286,12 @@ export const getOrderStatus = async (publicOrderId: string) => {
   return {
     publicOrderId: order.publicOrderId,
     status: order.status,
+    customerName: order.customerName,
+    customerPhone: order.customerPhone,
+    customerAddress: order.customerAddress,
+    deliveryMethod: order.deliveryMethod,
+    notes: order.notes,
+    shippingCost: order.shippingCost,
     totalAmount: order.totalAmount,
     expiresAt: order.expiresAt,
     createdAt: order.createdAt,

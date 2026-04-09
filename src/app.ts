@@ -26,6 +26,7 @@ import publicShippingZonesRoutes from './modules/store/shipping-zones.public.rou
 
 // Customer routes
 import customerOrdersRoutes from './modules/customer/orders/orders.routes';
+import customerAddressesRoutes from './modules/customer/addresses/addresses.routes';
 
 const app: Application = express();
 
@@ -64,6 +65,7 @@ app.use('/api/admin/shipping-zones', adminShippingZonesRoutes);
 
 // Customer APIs (customer JWT required)
 app.use('/api/customer/orders', customerOrdersRoutes);
+app.use('/api/customer/addresses', customerAddressesRoutes);
 
 // ─── 404 Handler ─────────────────────────────────────────────────────────────
 app.use((_req: Request, res: Response) => {
