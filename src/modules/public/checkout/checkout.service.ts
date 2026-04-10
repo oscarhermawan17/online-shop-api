@@ -271,6 +271,11 @@ export const getOrderStatus = async (publicOrderId: string) => {
     include: {
       items: true,
       paymentProof: true,
+      shippingAssignment: {
+        include: {
+          shift: true,
+        },
+      },
       store: {
         select: {
           name: true,
@@ -302,6 +307,19 @@ export const getOrderStatus = async (publicOrderId: string) => {
     createdAt: order.createdAt,
     items: order.items,
     paymentProof: order.paymentProof,
+    shippingAssignment: order.shippingAssignment
+      ? {
+          shiftId: order.shippingAssignment.shiftId,
+          deliveryDate: order.shippingAssignment.deliveryDate,
+          driverName: order.shippingAssignment.driverName,
+          assignedAt: order.shippingAssignment.assignedAt,
+          assignedByAdminId: order.shippingAssignment.assignedByAdminId,
+          shiftName: order.shippingAssignment.shift.name,
+          shiftStartTime: order.shippingAssignment.shift.startTime,
+          shiftEndTime: order.shippingAssignment.shift.endTime,
+          shiftLabel: `${order.shippingAssignment.shift.name} (${order.shippingAssignment.shift.startTime} - ${order.shippingAssignment.shift.endTime})`,
+        }
+      : null,
     store: order.store,
   };
 };

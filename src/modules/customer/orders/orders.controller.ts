@@ -1,8 +1,8 @@
 import { Response, NextFunction } from 'express';
 
-import prisma from '../../../config/prisma';
 import { sendSuccess } from '../../../utils/response';
 import { CustomerAuthRequest } from '../../../middlewares/customer-auth.middleware';
+import * as ordersService from './orders.service';
 
 export const getMyOrders = async (
   req: CustomerAuthRequest,
@@ -12,11 +12,7 @@ export const getMyOrders = async (
   try {
     const customerId = req.customer!.customerId;
 
-    const orders = await prisma.order.findMany({
-      where: { customerId },
-      include: { items: true },
-      orderBy: { createdAt: 'desc' },
-    });
+    const orders = await ordersService.getMyOrders(customerId);
 
     sendSuccess(res, orders, 'Orders fetched successfully', 200);
   } catch (error) {

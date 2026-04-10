@@ -73,3 +73,28 @@ export const updateOrderStatus = async (
     next(error);
   }
 };
+
+// ─── PATCH /admin/orders/:id/ship ─────────────────────────────────────────────
+
+export const shipOrder = async (
+  req: AuthRequest,
+  res: Response,
+  next: NextFunction,
+): Promise<void> => {
+  try {
+    const { shiftId, deliveryDate, driverName } = req.body;
+    const order = await ordersService.shipOrder(
+      req.user!.storeId,
+      req.params.id as string,
+      {
+        shiftId,
+        deliveryDate,
+        driverName,
+        assignedByAdminId: req.user!.adminId,
+      },
+    );
+    sendSuccess(res, order, 'Order shipping scheduled successfully');
+  } catch (error) {
+    next(error);
+  }
+};

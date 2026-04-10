@@ -78,6 +78,9 @@ model Store {
   orderItems         OrderItem[]
   paymentProofs      PaymentProof[]
   shippingZones      ShippingZone[]
+  shippingDrivers    ShippingDriver[]
+  shippingShifts     ShippingShift[]
+  shippingAssignments OrderShippingAssignment[]
 
   @@map("stores")
 }
@@ -273,6 +276,7 @@ model Order {
   customer     Customer      @relation(fields: [customerId], references: [id])
   items        OrderItem[]
   paymentProof PaymentProof?
+  shippingAssignment OrderShippingAssignment?
 
   @@index([storeId])
   @@index([customerId])
@@ -335,6 +339,70 @@ model ShippingZone {
   @@unique([storeId, name])
   @@index([storeId])
   @@map("shipping_zones")
+}
+
+// ─── Shipping Driver ──────────────────────────────────────────────────────────
+// Master list of drivers/couriers that admins can choose from in shipping flow.
+
+model ShippingDriver {
+  id        String   @id @default(uuid())
+  storeId   String
+  name      String
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  store Store @relation(fields: [storeId], references: [id], onDelete: Cascade)
+
+  @@unique([storeId, name])
+  @@index([storeId])
+  @@index([storeId, isActive])
+  @@map("shipping_drivers")
+}
+
+// ─── Shipping Shift ───────────────────────────────────────────────────────────
+// Reusable delivery shift templates used by admins when dispatching orders.
+
+model ShippingShift {
+  id        String   @id @default(uuid())
+  storeId   String
+  name      String
+  startTime String
+  endTime   String
+  isActive  Boolean  @default(true)
+  sortOrder Int?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  store       Store                     @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  assignments OrderShippingAssignment[]
+
+  @@unique([storeId, name, startTime, endTime])
+  @@index([storeId])
+  @@index([storeId, isActive])
+  @@map("shipping_shifts")
+}
+
+// ─── Order Shipping Assignment ───────────────────────────────────────────────
+// Captures the admin dispatch decision for a delivery order.
+
+model OrderShippingAssignment {
+  id                String   @id @default(uuid())
+  storeId           String
+  orderId           String   @unique
+  shiftId           String
+  deliveryDate      DateTime
+  driverName        String
+  assignedAt        DateTime @default(now())
+  assignedByAdminId String?
+
+  store Store         @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  order Order         @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  shift ShippingShift @relation(fields: [shiftId], references: [id])
+
+  @@index([storeId])
+  @@index([shiftId])
+  @@map("order_shipping_assignments")
 }
 
 // ─── Admin ────────────────────────────────────────────────────────────────────
