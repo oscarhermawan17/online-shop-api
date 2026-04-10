@@ -7,6 +7,7 @@ export interface CreateProductInput {
   name: string;
   description?: string;
   basePrice: number;
+  wholesalePrice?: number;
   stock: number;
 }
 
@@ -14,6 +15,7 @@ export interface UpdateProductInput {
   name?: string;
   description?: string;
   basePrice?: number;
+  wholesalePrice?: number | null;
   isActive?: boolean;
   stock?: number;
 }
@@ -30,6 +32,7 @@ export interface CreateProductOptionInput {
 export interface CreateVariantInput {
   name?: string;
   priceOverride?: number;
+  wholesalePriceOverride?: number;
   stock: number;
   optionValueIds?: string[];
 }
@@ -80,6 +83,7 @@ export const createProduct = async (storeId: string, data: CreateProductInput) =
       name: data.name,
       description: data.description,
       basePrice: data.basePrice,
+      wholesalePrice: data.wholesalePrice,
       variants: {
         create: {
           storeId,
@@ -225,6 +229,7 @@ export const addProductVariant = async (
       productId,
       name: data.name,
       priceOverride: data.priceOverride,
+      wholesalePriceOverride: data.wholesalePriceOverride,
       stock: data.stock,
       isDefault: false,
       ...(data.optionValueIds?.length
@@ -245,7 +250,7 @@ export const updateProductVariant = async (
   storeId: string,
   productId: string,
   variantId: string,
-  data: { name?: string; priceOverride?: number | null; stock?: number },
+  data: { name?: string; priceOverride?: number | null; wholesalePriceOverride?: number | null; stock?: number },
 ) => {
   await getProduct(storeId, productId);
 

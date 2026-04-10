@@ -89,8 +89,9 @@ model Product {
   storeId     String
   name        String
   description String?
-  basePrice   Int
-  isActive    Boolean  @default(true)
+  basePrice      Int
+  wholesalePrice Int?     // null → same as basePrice (harga toko/customer login)
+  isActive       Boolean  @default(true)
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
@@ -166,8 +167,9 @@ model Variant {
   productId     String
   name          String?
   isDefault     Boolean  @default(false)
-  priceOverride Int?     // null → use product.basePrice
-  stock         Int      @default(0)
+  priceOverride          Int?     // null → use product.basePrice
+  wholesalePriceOverride Int?     // null → use product.wholesalePrice
+  stock                  Int      @default(0)
   createdAt     DateTime @default(now())
 
   // Relations

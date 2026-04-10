@@ -114,7 +114,10 @@ export const checkout = async (input: CheckoutInput) => {
       throw new AppError(`Product does not belong to this store`, 400);
     }
 
-    let price = product.basePrice;
+    const isWholesale = !!authenticatedCustomerId;
+    let price = isWholesale
+      ? (product.wholesalePrice ?? product.basePrice)
+      : product.basePrice;
     let variantDescription: string | null = null;
 
     if (item.variantId) {
@@ -132,7 +135,9 @@ export const checkout = async (input: CheckoutInput) => {
         );
       }
 
-      price = variant.priceOverride ?? product.basePrice;
+      const retailPrice = variant.priceOverride ?? product.basePrice;
+      const wholesalePrice = variant.wholesalePriceOverride ?? product.wholesalePrice ?? retailPrice;
+      price = isWholesale ? wholesalePrice : retailPrice;
 
       // Build variant description
       variantDescription = variant.optionValues

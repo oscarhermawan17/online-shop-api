@@ -9,19 +9,30 @@ type VariantOptionValue = VariantWithOptions['optionValues'][number];
 
 // ─── Helper: Format product for public API ────────────────────────────────────
 
-const formatProductForPublic = (product: ProductWithRelations) => {
+const formatProductForPublic = (product: ProductWithRelations, isWholesale: boolean) => {
+  const effectiveBasePrice = isWholesale
+    ? (product.wholesalePrice ?? product.basePrice)
+    : product.basePrice;
+
   return {
     ...product,
-    variants: product.variants.map((variant: VariantWithOptions) => ({
-      id: variant.id,
-      stock: variant.stock,
-      price: variant.priceOverride ?? product.basePrice,
-      options: variant.optionValues.map((ov: VariantOptionValue) => ({
-        optionId: ov.optionValue.optionId,
-        optionValueId: ov.optionValueId,
-        value: ov.optionValue.value,
-      })),
-    })),
+    basePrice: effectiveBasePrice,
+    variants: product.variants.map((variant: VariantWithOptions) => {
+      const retailPrice = variant.priceOverride ?? product.basePrice;
+      const wholesalePrice = variant.wholesalePriceOverride ?? product.wholesalePrice ?? retailPrice;
+      const price = isWholesale ? wholesalePrice : retailPrice;
+
+      return {
+        id: variant.id,
+        stock: variant.stock,
+        price,
+        options: variant.optionValues.map((ov: VariantOptionValue) => ({
+          optionId: ov.optionValue.optionId,
+          optionValueId: ov.optionValueId,
+          value: ov.optionValue.value,
+        })),
+      };
+    }),
   };
 };
 
@@ -53,7 +64,7 @@ const getProductById = (productId: string) => {
   });
 };
 
-export const listProducts = async (storeId?: string) => {
+export const listProducts = async (storeId?: string, isWholesale: boolean = false) => {
   const products = await prisma.product.findMany({
     where: storeId ? { storeId } : undefined,
     include: {
@@ -79,15 +90,15 @@ export const listProducts = async (storeId?: string) => {
     orderBy: { createdAt: 'desc' },
   });
 
-  return products.map(formatProductForPublic);
+  return products.map((p) => formatProductForPublic(p, isWholesale));
 };
 
-export const getProduct = async (productId: string) => {
+export const getProduct = async (productId: string, isWholesale: boolean = false) => {
   const product = await getProductById(productId);
 
   if (!product) {
     throw new AppError('Product not found', 404);
   }
 
-  return formatProductForPublic(product);
+  return formatProductForPublic(product, isWholesale);
 };
