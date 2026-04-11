@@ -1,8 +1,6 @@
 import dotenv from 'dotenv';
 dotenv.config();
 
-import { ensureDatabaseExists } from './utils/db-init';
-
 const PORT = process.env.PORT ?? 3000;
 const NODE_ENV = process.env.NODE_ENV ?? 'development';
 
@@ -11,9 +9,6 @@ let prisma: typeof import('./config/prisma').default | null = null;
 
 const startServer = async (): Promise<void> => {
   try {
-    // 🗄️ Automatically create DB and tables if they don't exist
-    await ensureDatabaseExists();
-
     const [{ default: app }, { default: prismaClient }] = await Promise.all([
       import('./app'),
       import('./config/prisma'),
