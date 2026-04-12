@@ -35,4 +35,8 @@ router.post('/:id/variants', productsController.addProductVariant);
 router.patch('/:id/variants/:variantId', productsController.updateProductVariant);
 router.delete('/:id/variants/:variantId', productsController.deleteProductVariant);
 
+// ─── Product Discount ─────────────────────────────────────────────────────────
+
+router.put('/:id/discount', productsController.upsertDiscount);
+
 export default router;

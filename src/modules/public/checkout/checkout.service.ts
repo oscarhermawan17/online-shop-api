@@ -34,6 +34,38 @@ const generatePublicOrderId = (): string => {
   return `ORD-${timestamp}-${random}`;
 };
 
+// ─── Helper: Lazy expiry check ────────────────────────────────────────────────
+// Fallback for orders that pg_cron hasn't processed yet.
+// Restores stock and marks order as expired_unpaid.
+
+const expireOrderIfNeeded = async (orderId: string): Promise<boolean> => {
+  const order = await prisma.order.findUnique({
+    where: { id: orderId },
+    include: { items: true },
+  });
+
+  if (!order || order.status !== 'pending_payment') return false;
+  if (!order.expiresAt || order.expiresAt > new Date()) return false;
+
+  // Restore stock for each item
+  for (const item of order.items) {
+    if (item.variantId) {
+      await prisma.variant.update({
+        where: { id: item.variantId },
+        data: { stock: { increment: item.quantity } },
+      });
+    }
+  }
+
+  // Mark as expired
+  await prisma.order.update({
+    where: { id: orderId },
+    data: { status: 'expired_unpaid' },
+  });
+
+  return true;
+};
+
 // ─── Service ──────────────────────────────────────────────────────────────────
 
 export const checkout = async (input: CheckoutInput) => {
@@ -86,6 +118,7 @@ export const checkout = async (input: CheckoutInput) => {
   // Process items and calculate total
   let totalAmount = 0;
   const orderItems: {
+    variantId: string | null;
     productName: string;
     variantDescription: string | null;
     price: number;
@@ -96,6 +129,7 @@ export const checkout = async (input: CheckoutInput) => {
     const product = await prisma.product.findUnique({
       where: { id: item.productId },
       include: {
+        discount: true,
         variants: {
           include: {
             optionValues: {
@@ -115,9 +149,15 @@ export const checkout = async (input: CheckoutInput) => {
     }
 
     const isWholesale = !!authenticatedCustomerId;
+    const discount = product.discount;
+
+    const applyDiscount = (p: number, pct: number | null | undefined) =>
+      pct ? Math.round(p * (1 - pct / 100)) : p;
+
     let price = isWholesale
-      ? (product.wholesalePrice ?? product.basePrice)
-      : product.basePrice;
+      ? applyDiscount(product.wholesalePrice ?? product.basePrice, discount?.retailDiscountActive ? discount.retailDiscount : null)
+      : applyDiscount(product.basePrice, discount?.normalDiscountActive ? discount.normalDiscount : null);
+
     let variantDescription: string | null = null;
 
     if (item.variantId) {
@@ -137,7 +177,10 @@ export const checkout = async (input: CheckoutInput) => {
 
       const retailPrice = variant.priceOverride ?? product.basePrice;
       const wholesalePrice = variant.wholesalePriceOverride ?? product.wholesalePrice ?? retailPrice;
-      price = isWholesale ? wholesalePrice : retailPrice;
+      const rawPrice = isWholesale ? wholesalePrice : retailPrice;
+      price = isWholesale
+        ? applyDiscount(rawPrice, discount?.retailDiscountActive ? discount.retailDiscount : null)
+        : applyDiscount(rawPrice, discount?.normalDiscountActive ? discount.normalDiscount : null);
 
       // Build variant description
       variantDescription = variant.optionValues
@@ -155,6 +198,7 @@ export const checkout = async (input: CheckoutInput) => {
     }
 
     orderItems.push({
+      variantId: item.variantId ?? null,
       productName: product.name,
       variantDescription,
       price,
@@ -164,8 +208,9 @@ export const checkout = async (input: CheckoutInput) => {
     totalAmount += price * item.quantity;
   }
 
-  // Create order with expiry (24 hours)
-  const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
+  // Create order with expiry (configurable via ORDER_EXPIRY_MINUTES, default 30)
+  const expiryMinutes = parseInt(process.env.ORDER_EXPIRY_MINUTES ?? '30', 10);
+  const expiresAt = new Date(Date.now() + expiryMinutes * 60 * 1000);
 
   const finalShippingCost = shippingCost ?? 0;
 
@@ -223,6 +268,12 @@ export const uploadPaymentProof = async (
     throw new AppError('Order not found', 404);
   }
 
+  // Lazy expiry check — in case pg_cron hasn't run yet
+  const wasExpired = await expireOrderIfNeeded(order.id);
+  if (wasExpired) {
+    throw new AppError('Order has expired. Please create a new order.', 400);
+  }
+
   if (order.status !== 'pending_payment') {
     throw new AppError(
       `Cannot upload payment proof for order with status: ${order.status}`,
@@ -266,6 +317,10 @@ export const uploadPaymentProof = async (
 };
 
 export const getOrderStatus = async (publicOrderId: string) => {
+  // Lazy expiry check before returning status
+  const orderForExpiry = await prisma.order.findUnique({ where: { publicOrderId }, select: { id: true } });
+  if (orderForExpiry) await expireOrderIfNeeded(orderForExpiry.id);
+
   const order = await prisma.order.findUnique({
     where: { publicOrderId },
     include: {

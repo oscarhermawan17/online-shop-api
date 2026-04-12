@@ -43,6 +43,7 @@ const productInclude = {
   images: true,
   options: { include: { values: true } },
   variants: { include: { optionValues: { include: { optionValue: true } } } },
+  discount: true,
 };
 
 function withStock<T extends { variants: Array<{ isDefault: boolean; stock: number }> }>(
@@ -289,4 +290,27 @@ export const deleteProductVariant = async (
   }
 
   await prisma.variant.delete({ where: { id: variantId } });
+};
+
+// ─── Product Discount ─────────────────────────────────────────────────────────
+
+export interface UpsertDiscountInput {
+  normalDiscount?: number | null;
+  normalDiscountActive?: boolean;
+  retailDiscount?: number | null;
+  retailDiscountActive?: boolean;
+}
+
+export const upsertDiscount = async (
+  storeId: string,
+  productId: string,
+  data: UpsertDiscountInput,
+) => {
+  await getProduct(storeId, productId);
+
+  return prisma.productDiscount.upsert({
+    where: { productId },
+    update: data,
+    create: { storeId, productId, ...data },
+  });
 };

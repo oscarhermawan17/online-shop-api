@@ -7,20 +7,38 @@ type ProductWithRelations = NonNullable<Awaited<ReturnType<typeof getProductById
 type VariantWithOptions = ProductWithRelations['variants'][number];
 type VariantOptionValue = VariantWithOptions['optionValues'][number];
 
+// ─── Helper: Apply discount to a price ───────────────────────────────────────
+
+const applyDiscount = (price: number, discountPercent: number | null | undefined): number => {
+  if (!discountPercent) return price;
+  return Math.round(price * (1 - discountPercent / 100));
+};
+
 // ─── Helper: Format product for public API ────────────────────────────────────
 
 const formatProductForPublic = (product: ProductWithRelations, isWholesale: boolean) => {
-  const effectiveBasePrice = isWholesale
+  const discount = product.discount;
+
+  const rawBasePrice = isWholesale
     ? (product.wholesalePrice ?? product.basePrice)
     : product.basePrice;
+
+  const effectiveBasePrice = isWholesale
+    ? (discount?.retailDiscountActive ? applyDiscount(rawBasePrice, discount.retailDiscount) : rawBasePrice)
+    : (discount?.normalDiscountActive ? applyDiscount(rawBasePrice, discount.normalDiscount) : rawBasePrice);
 
   return {
     ...product,
     basePrice: effectiveBasePrice,
+    discount: discount ?? null,
     variants: product.variants.map((variant: VariantWithOptions) => {
       const retailPrice = variant.priceOverride ?? product.basePrice;
       const wholesalePrice = variant.wholesalePriceOverride ?? product.wholesalePrice ?? retailPrice;
-      const price = isWholesale ? wholesalePrice : retailPrice;
+      const rawPrice = isWholesale ? wholesalePrice : retailPrice;
+
+      const price = isWholesale
+        ? (discount?.retailDiscountActive ? applyDiscount(rawPrice, discount.retailDiscount) : rawPrice)
+        : (discount?.normalDiscountActive ? applyDiscount(rawPrice, discount.normalDiscount) : rawPrice);
 
       return {
         id: variant.id,
@@ -60,6 +78,7 @@ const getProductById = (productId: string) => {
           },
         },
       },
+      discount: true,
     },
   });
 };
@@ -86,6 +105,7 @@ export const listProducts = async (storeId?: string, isWholesale: boolean = fals
           },
         },
       },
+      discount: true,
     },
     orderBy: { createdAt: 'desc' },
   });

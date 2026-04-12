@@ -81,6 +81,7 @@ model Store {
   shippingDrivers    ShippingDriver[]
   shippingShifts     ShippingShift[]
   shippingAssignments OrderShippingAssignment[]
+  productDiscounts   ProductDiscount[]
 
   @@map("stores")
 }
@@ -103,6 +104,7 @@ model Product {
   images   ProductImage[]
   options  ProductOption[]
   variants Variant[]
+  discount ProductDiscount?
 
   @@index([storeId])
   @@map("products")
@@ -288,9 +290,10 @@ model Order {
 // so historical orders remain accurate after product edits.
 
 model OrderItem {
-  id                 String @id @default(uuid())
+  id                 String  @id @default(uuid())
   storeId            String
   orderId            String
+  variantId          String? // kept for stock restoration on expiry/cancel
   productName        String
   variantDescription String?
   price              Int
@@ -423,4 +426,29 @@ model Admin {
 
   @@index([storeId])
   @@map("admins")
+}
+
+// ─── ProductDiscount ──────────────────────────────────────────────────────────
+// One discount record per product. Supports independent discounts for
+// Harga Normal (guest) and Harga Retail (ritel/logged-in).
+// startDate/endDate are nullable — reserved for future time-limited promos.
+
+model ProductDiscount {
+  id                   String    @id @default(uuid())
+  storeId              String
+  productId            String    @unique
+  normalDiscount       Int?      // 1-100, discount % for basePrice (Harga Normal / guest)
+  normalDiscountActive Boolean   @default(false)
+  retailDiscount       Int?      // 1-100, discount % for wholesalePrice (Harga Retail / ritel)
+  retailDiscountActive Boolean   @default(false)
+  startDate            DateTime? // reserved for future time-limited promo
+  endDate              DateTime? // reserved for future time-limited promo
+  createdAt            DateTime  @default(now())
+  updatedAt            DateTime  @updatedAt
+
+  store   Store   @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@index([storeId])
+  @@map("product_discounts")
 }

@@ -201,6 +201,25 @@ export const updateProductVariant = async (
   }
 };
 
+// ─── PUT /admin/products/:id/discount ────────────────────────────────────────
+
+export const upsertDiscount = async (
+  req: AuthRequest,
+  res: Response,
+  next: NextFunction,
+): Promise<void> => {
+  try {
+    const discount = await productsService.upsertDiscount(
+      req.user!.storeId,
+      req.params.id as string,
+      req.body,
+    );
+    sendSuccess(res, discount, 'Discount updated successfully');
+  } catch (error) {
+    next(error);
+  }
+};
+
 // ─── DELETE /admin/products/:id/variants/:variantId ───────────────────────────
 
 export const deleteProductVariant = async (
