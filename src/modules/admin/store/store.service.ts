@@ -16,6 +16,10 @@ export interface UpdateStoreInput {
   bankAccountNumber?: string;
   bankName?: string;
   qrisImageUrl?: string;
+  deliveryRetailMinimumOrder?: number | null;
+  deliveryStoreMinimumOrder?: number | null;
+  deliveryRetailFreeShippingMinimumOrder?: number | null;
+  deliveryStoreFreeShippingMinimumOrder?: number | null;
 }
 
 // ─── Service ──────────────────────────────────────────────────────────────────

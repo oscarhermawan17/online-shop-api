@@ -26,6 +26,14 @@ export interface PaymentProofInput {
   imageUrl: string;
 }
 
+const formatRupiah = (amount: number): string =>
+  new Intl.NumberFormat('id-ID', {
+    style: 'currency',
+    currency: 'IDR',
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 0,
+  }).format(amount);
+
 // ─── Helper: Generate public order ID ─────────────────────────────────────────
 
 const generatePublicOrderId = (): string => {
@@ -208,11 +216,32 @@ export const checkout = async (input: CheckoutInput) => {
     totalAmount += price * item.quantity;
   }
 
+  const isDelivery = deliveryMethod === 'delivery';
+  const isStoreCustomer = !!authenticatedCustomerId;
+  const minimumOrder = isStoreCustomer
+    ? store.deliveryStoreMinimumOrder
+    : store.deliveryRetailMinimumOrder;
+  const freeShippingMinimumOrder = isStoreCustomer
+    ? store.deliveryStoreFreeShippingMinimumOrder
+    : store.deliveryRetailFreeShippingMinimumOrder;
+
+  if (isDelivery && minimumOrder && totalAmount < minimumOrder) {
+    throw new AppError(
+      `Minimal belanja untuk pengiriman ${
+        isStoreCustomer ? 'toko' : 'retail'
+      } adalah ${formatRupiah(minimumOrder)}`,
+      400,
+    );
+  }
+
   // Create order with expiry (configurable via ORDER_EXPIRY_MINUTES, default 30)
   const expiryMinutes = parseInt(process.env.ORDER_EXPIRY_MINUTES ?? '30', 10);
   const expiresAt = new Date(Date.now() + expiryMinutes * 60 * 1000);
 
-  const finalShippingCost = shippingCost ?? 0;
+  const qualifiesForFreeShipping = isDelivery
+    && !!freeShippingMinimumOrder
+    && totalAmount >= freeShippingMinimumOrder;
+  const finalShippingCost = qualifiesForFreeShipping ? 0 : (shippingCost ?? 0);
 
   const order = await prisma.order.create({
     data: {
@@ -243,6 +272,10 @@ export const checkout = async (input: CheckoutInput) => {
     status: order.status,
     totalAmount: order.totalAmount,
     expiresAt: order.expiresAt,
+    shippingCost: order.shippingCost,
+    minimumOrderApplied: isDelivery ? minimumOrder ?? null : null,
+    freeShippingMinimumOrderApplied: isDelivery ? freeShippingMinimumOrder ?? null : null,
+    isFreeShippingApplied: qualifiesForFreeShipping,
     items: order.items,
     store: {
       name: store.name,

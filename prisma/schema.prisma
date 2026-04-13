@@ -62,6 +62,10 @@ model Store {
   bankAccountNumber  String?
   bankName           String?
   qrisImageUrl       String?
+  deliveryRetailMinimumOrder             Int?
+  deliveryStoreMinimumOrder              Int?
+  deliveryRetailFreeShippingMinimumOrder Int?
+  deliveryStoreFreeShippingMinimumOrder  Int?
   createdAt          DateTime @default(now())
   updatedAt          DateTime @updatedAt
 

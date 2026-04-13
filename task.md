@@ -24,7 +24,7 @@
 |---|---|---|---|---|
 | 2.1 | Cart management | Add/remove items, order per unit (PCS) | 5 | Done |
 | 2.2 | Cart expiration & auto-cancel | Auto-cancel cart after 30 minutes of inactivity (duration configurable by admin) | 3 | Todo |
-| 2.3 | Minimum order validation | Enforce minimum order amount before checkout (configurable by admin) | 2 | Todo |
+| 2.3 | Minimum order validation | Enforce minimum order amount before checkout (configurable by admin) | 2 | Done |
 
 ---
 

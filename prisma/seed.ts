@@ -139,6 +139,10 @@ async function main() {
       bankAccountName: "Urban Outfit Local",
       bankAccountNumber: "1234567890",
       bankName: "BCA",
+      deliveryRetailMinimumOrder: 50000,
+      deliveryStoreMinimumOrder: 100000,
+      deliveryRetailFreeShippingMinimumOrder: 200000,
+      deliveryStoreFreeShippingMinimumOrder: 300000,
     },
   })
   console.log(`✅ Store upserted: ${store.name} (id: ${store.id})`)
