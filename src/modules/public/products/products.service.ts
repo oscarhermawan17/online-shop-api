@@ -67,6 +67,8 @@ const getProductById = (productId: string) => {
           whatsappNumber: true,
         },
       },
+      categories: true,
+      unit: true,
       images: true,
       options: { include: { values: true } },
       variants: {
@@ -94,6 +96,8 @@ export const listProducts = async (storeId?: string, isWholesale: boolean = fals
           whatsappNumber: true,
         },
       },
+      categories: true,
+      unit: true,
       images: true,
       options: { include: { values: true } },
       variants: {
