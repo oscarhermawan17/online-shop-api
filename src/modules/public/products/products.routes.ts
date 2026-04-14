@@ -7,6 +7,7 @@ const router = Router();
 
 // ─── Public Product Routes ────────────────────────────────────────────────────
 
+router.get('/suggestions', optionalCustomerAuth, productsController.listProductSuggestions);
 router.get('/', optionalCustomerAuth, productsController.listProducts);
 router.get('/:id', optionalCustomerAuth, productsController.getProduct);
 
