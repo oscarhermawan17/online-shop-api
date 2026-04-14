@@ -62,11 +62,17 @@ model Store {
   bankAccountNumber  String?
   bankName           String?
   qrisImageUrl       String?
+  deliveryRetailMinimumOrder             Int?
+  deliveryStoreMinimumOrder              Int?
+  deliveryRetailFreeShippingMinimumOrder Int?
+  deliveryStoreFreeShippingMinimumOrder  Int?
   createdAt          DateTime @default(now())
   updatedAt          DateTime @updatedAt
 
   // Relations
   products           Product[]
+  categories         Category[]
+  units              Unit[]
   orders             Order[]
   admins             Admin[]
   customers          Customer[]
@@ -82,8 +88,29 @@ model Store {
   shippingShifts     ShippingShift[]
   shippingAssignments OrderShippingAssignment[]
   productDiscounts   ProductDiscount[]
+  carouselSlides     CarouselSlide[]
 
   @@map("stores")
+}
+
+model CarouselSlide {
+  id              String   @id @default(uuid())
+  storeId         String
+  title           String
+  subtitle        String?
+  badge           String?
+  imageUrl        String?
+  backgroundColor String?
+  isActive        Boolean  @default(true)
+  sortOrder       Int      @default(0)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  store Store @relation(fields: [storeId], references: [id], onDelete: Cascade)
+
+  @@index([storeId])
+  @@index([storeId, isActive, sortOrder])
+  @@map("carousel_slides")
 }
 
 // ─── Product ──────────────────────────────────────────────────────────────────
@@ -91,6 +118,7 @@ model Store {
 model Product {
   id          String   @id @default(uuid())
   storeId     String
+  unitId      String?
   name        String
   description String?
   basePrice      Int
@@ -100,11 +128,13 @@ model Product {
   updatedAt   DateTime @updatedAt
 
   // Relations
-  store    Store            @relation(fields: [storeId], references: [id], onDelete: Cascade)
-  images   ProductImage[]
-  options  ProductOption[]
-  variants Variant[]
-  discount ProductDiscount?
+  store      Store            @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  categories Category[]
+  unit       Unit?            @relation(fields: [unitId], references: [id], onDelete: SetNull)
+  images     ProductImage[]
+  options    ProductOption[]
+  variants   Variant[]
+  discount   ProductDiscount?
 
   @@index([storeId])
   @@map("products")
@@ -452,3 +482,37 @@ model ProductDiscount {
   @@index([storeId])
   @@map("product_discounts")
 }
+
+// ─── Category ─────────────────────────────────────────────────────────────────
+
+model Category {
+  id        String    @id @default(uuid())
+  storeId   String
+  name      String
+  icon      String?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  store     Store     @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  products  Product[]
+
+  @@index([storeId])
+  @@map("categories")
+}
+
+// ─── Unit ─────────────────────────────────────────────────────────────────────
+
+model Unit {
+  id        String    @id @default(uuid())
+  storeId   String
+  name      String
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  store     Store     @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  products  Product[]
+
+  @@index([storeId])
+  @@map("units")
+}
+

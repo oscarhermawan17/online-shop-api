@@ -71,6 +71,9 @@ All models have `storeId` except Store, HealthCheck, and VariantOptionValue (int
 | ShippingShift | Delivery shift templates |
 | OrderShippingAssignment | Courier dispatch record per order |
 | ProductDiscount | One per product; normalDiscount + normalDiscountActive (guest), retailDiscount + retailDiscountActive (ritel); startDate/endDate nullable (future use) |
+| CarouselSlide | Promotional banner slides; title, subtitle, badge, imageUrl, backgroundColor, isActive, sortOrder; max 10 per store |
+| Category | Product categories with icon; many-to-many with Product |
+| Unit | Product unit of measure (e.g. pcs, kg); one-to-many with Product |
 
 ---
 
@@ -82,6 +85,8 @@ GET  /api/health
 GET  /api/store
 GET  /api/products              (optional customer auth → wholesale pricing)
 GET  /api/products/:id
+GET  /api/categories            (public category list)
+GET  /api/carousel              (active slides only)
 GET  /api/shipping-zones
 POST /api/checkout              (optional customer auth)
 POST /api/payment-proof
@@ -133,6 +138,17 @@ GET/POST/PATCH/DELETE             /api/admin/shipping-shifts
 
 # Discount — staff+
 PUT                               /api/admin/products/:id/discount
+
+# Carousel — manager+
+GET/PUT                           /api/admin/carousel
+
+# Categories — staff+
+GET/POST/PATCH/DELETE             /api/admin/categories
+GET                               /api/admin/categories/:id
+
+# Units — staff+
+GET/POST/PATCH/DELETE             /api/admin/units
+GET                               /api/admin/units/:id
 ```
 
 ---
@@ -158,6 +174,9 @@ PUT                               /api/admin/products/:id/discount
 | 5.3 Courier assignment (retail) | Ship endpoint creates OrderShippingAssignment |
 | 6.2 Bank transfer payment flow | checkout → proof upload → admin confirm |
 | 7.1 Real-time stock visibility | Variant stock in product endpoints; decremented on checkout |
+| Carousel management | CarouselSlide model; admin PUT /api/admin/carousel (manager+); public GET /api/carousel (active slides) |
+| Category management | Category model; full CRUD at /api/admin/categories (staff+); public GET /api/categories |
+| Unit management | Unit model; full CRUD at /api/admin/units (staff+) |
 
 ## Customer Types
 - **Guest** — non-login, pays `basePrice`. Auto-created on checkout.
@@ -165,10 +184,11 @@ PUT                               /api/admin/products/:id/discount
 - No B2B/B2C distinction. Task 1.2 (store customer) was removed as N/A.
 - Pricing logic: checkout and product listing apply `wholesalePrice` when `authenticatedCustomerId` is present.
 
-### ⚠️ Marked Done but Incomplete
+### ⚠️ Marked Done but Incomplete / Partial
 | Task | What's missing |
 |---|---|
-| 2.1 Cart management | No persistent cart. Checkout validates items inline only. No add/remove cart endpoints. |
+| 2.1 Cart management | **Status in task.md corrected to Todo.** No persistent cart exists. Checkout validates items inline only. No add/remove cart endpoints, no cart model. |
+| 3.5 Shipping discount rules | Free shipping threshold IS implemented (`deliveryRetailFreeShippingMinimumOrder` / `deliveryStoreFreeShippingMinimumOrder` in Store; applied at checkout). Partial shipping discount (e.g. 50% off) is NOT implemented. |
 | 5.2 Red zone enforcement | No zone validation during checkout. ShippingZone exists but not enforced. |
 
 ### ❌ Not Started
@@ -176,11 +196,9 @@ PUT                               /api/admin/products/:id/discount
 |---|---|
 | 1.4 Credit eligibility | No model |
 | 1.5 Credit term configuration | No model |
-| 2.3 Minimum order validation | Not implemented |
-| 3.5 Shipping discount rules | No model |
 | 4.1 Voucher generation | No model |
 | 4.2 Voucher redemption | No model |
-| 5.5 Delivery SLA tracking | No model |
+| 5.5 Delivery SLA tracking | No model; OrderShippingAssignment has deliveryDate but no SLA deadline |
 | 6.3 Credit payment flow | No model |
 | 6.4 Unpaid invoice enforcement | No model |
 | 9.1 Complaint submission | No model |

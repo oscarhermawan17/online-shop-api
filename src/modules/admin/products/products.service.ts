@@ -6,6 +6,8 @@ import { AppError } from '../../../middlewares/error.middleware';
 export interface CreateProductInput {
   name: string;
   description?: string;
+  categoryIds?: string[];
+  unitId?: string;
   basePrice: number;
   wholesalePrice?: number;
   stock: number;
@@ -14,6 +16,8 @@ export interface CreateProductInput {
 export interface UpdateProductInput {
   name?: string;
   description?: string;
+  categoryIds?: string[];
+  unitId?: string | null;
   basePrice?: number;
   wholesalePrice?: number | null;
   isActive?: boolean;
@@ -40,6 +44,8 @@ export interface CreateVariantInput {
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 const productInclude = {
+  categories: true,
+  unit: true,
   images: true,
   options: { include: { values: true } },
   variants: { include: { optionValues: { include: { optionValue: true } } } },
@@ -83,6 +89,8 @@ export const createProduct = async (storeId: string, data: CreateProductInput) =
       storeId,
       name: data.name,
       description: data.description,
+      categories: data.categoryIds ? { connect: data.categoryIds.map((id) => ({ id })) } : undefined,
+      unitId: data.unitId,
       basePrice: data.basePrice,
       wholesalePrice: data.wholesalePrice,
       variants: {
@@ -105,11 +113,16 @@ export const updateProduct = async (
 ) => {
   await getProduct(storeId, productId);
 
-  const { stock, ...productData } = data;
+  const { stock, categoryIds, ...productData } = data;
 
   await prisma.product.update({
     where: { id: productId },
-    data: productData,
+    data: {
+      ...productData,
+      ...(categoryIds !== undefined
+        ? { categories: { set: categoryIds.map((id) => ({ id })) } }
+        : {}),
+    },
   });
 
   if (stock !== undefined) {

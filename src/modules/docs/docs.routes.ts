@@ -313,6 +313,10 @@ const openApiSpec = {
             ],
           },
           totalAmount: { type: 'integer' },
+          shippingCost: { type: 'integer' },
+          minimumOrderApplied: { type: 'integer', nullable: true },
+          freeShippingMinimumOrderApplied: { type: 'integer', nullable: true },
+          isFreeShippingApplied: { type: 'boolean' },
           expiresAt: { type: 'string', format: 'date-time' },
           shippingAssignment: {
             allOf: [
@@ -349,6 +353,10 @@ const openApiSpec = {
           bankAccountNumber: { type: 'string', nullable: true },
           bankName: { type: 'string', nullable: true },
           qrisImageUrl: { type: 'string', nullable: true },
+          deliveryRetailMinimumOrder: { type: 'integer', nullable: true },
+          deliveryStoreMinimumOrder: { type: 'integer', nullable: true },
+          deliveryRetailFreeShippingMinimumOrder: { type: 'integer', nullable: true },
+          deliveryStoreFreeShippingMinimumOrder: { type: 'integer', nullable: true },
         },
       },
       UpdateStoreRequest: {
@@ -365,6 +373,10 @@ const openApiSpec = {
           bankAccountNumber: { type: 'string' },
           bankName: { type: 'string' },
           qrisImageUrl: { type: 'string' },
+          deliveryRetailMinimumOrder: { type: 'integer', nullable: true },
+          deliveryStoreMinimumOrder: { type: 'integer', nullable: true },
+          deliveryRetailFreeShippingMinimumOrder: { type: 'integer', nullable: true },
+          deliveryStoreFreeShippingMinimumOrder: { type: 'integer', nullable: true },
         },
       },
     },

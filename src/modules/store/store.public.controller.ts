@@ -11,7 +11,15 @@ export const getPublicStore = async (
 ): Promise<void> => {
   try {
     const store = await prisma.store.findFirst({
-      select: { name: true, description: true, address: true },
+      select: {
+        name: true,
+        description: true,
+        address: true,
+        deliveryRetailMinimumOrder: true,
+        deliveryStoreMinimumOrder: true,
+        deliveryRetailFreeShippingMinimumOrder: true,
+        deliveryStoreFreeShippingMinimumOrder: true,
+      },
     });
     if (!store) {
       res.status(404).json({ success: false, message: 'Store not found' });

@@ -139,9 +139,51 @@ async function main() {
       bankAccountName: "Urban Outfit Local",
       bankAccountNumber: "1234567890",
       bankName: "BCA",
+      deliveryRetailMinimumOrder: 50000,
+      deliveryStoreMinimumOrder: 100000,
+      deliveryRetailFreeShippingMinimumOrder: 200000,
+      deliveryStoreFreeShippingMinimumOrder: 300000,
     },
   })
   console.log(`✅ Store upserted: ${store.name} (id: ${store.id})`)
+
+  const hasCarouselSlides = await prisma.carouselSlide.count({
+    where: { storeId: STORE_ID },
+  })
+  if (hasCarouselSlides === 0) {
+    await prisma.carouselSlide.createMany({
+      data: [
+        {
+          storeId: STORE_ID,
+          title: "Grosir Minyak Goreng\nDiskon s/d 15%",
+          subtitle: "Stok terbatas untuk kebutuhan restoran dan katering.",
+          badge: "PROMO UNGGULAN",
+          backgroundColor: "#166534",
+          isActive: true,
+          sortOrder: 0,
+        },
+        {
+          storeId: STORE_ID,
+          title: "Paket Sembako\nMurah & Hemat",
+          subtitle: "Kebutuhan pokok harga grosir untuk UMKM dan rumah tangga.",
+          badge: "HARGA TERBAIK",
+          backgroundColor: "#006f1d",
+          isActive: true,
+          sortOrder: 1,
+        },
+        {
+          storeId: STORE_ID,
+          title: "Peralatan Rumah\nProduk Berkualitas",
+          subtitle: "Lengkapi dapur Anda dengan peralatan standar resto.",
+          badge: "CUCI GUDANG",
+          backgroundColor: "#064e3b",
+          isActive: true,
+          sortOrder: 2,
+        },
+      ],
+    })
+    console.log("✅ Default carousel slides seeded")
+  }
 
   const hasProducts = await prisma.product.count({
     where: { storeId: STORE_ID },
