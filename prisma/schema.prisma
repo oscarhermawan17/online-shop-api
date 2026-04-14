@@ -88,8 +88,29 @@ model Store {
   shippingShifts     ShippingShift[]
   shippingAssignments OrderShippingAssignment[]
   productDiscounts   ProductDiscount[]
+  carouselSlides     CarouselSlide[]
 
   @@map("stores")
+}
+
+model CarouselSlide {
+  id              String   @id @default(uuid())
+  storeId         String
+  title           String
+  subtitle        String?
+  badge           String?
+  imageUrl        String?
+  backgroundColor String?
+  isActive        Boolean  @default(true)
+  sortOrder       Int      @default(0)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  store Store @relation(fields: [storeId], references: [id], onDelete: Cascade)
+
+  @@index([storeId])
+  @@index([storeId, isActive, sortOrder])
+  @@map("carousel_slides")
 }
 
 // ─── Product ──────────────────────────────────────────────────────────────────

@@ -13,12 +13,14 @@ import customerAuthRoutes from './modules/customer-auth/customer-auth.routes';
 
 // Public routes
 import publicStoreRoutes from './modules/store/store.public.routes';
+import publicCarouselRoutes from './modules/carousel/carousel.public.routes';
 import publicProductsRoutes from './modules/public/products/products.routes';
 import checkoutRoutes from './modules/public/checkout/checkout.routes';
 import publicCategoryRoutes from './routes/public.category.routes';
 
 // Admin routes
 import adminStoreRoutes from './modules/admin/store/store.routes';
+import adminCarouselRoutes from './modules/admin/carousel/carousel.routes';
 import adminProductsRoutes from './modules/admin/products/products.routes';
 import adminOrdersRoutes from './modules/admin/orders/orders.routes';
 import adminCustomerRoutes from './modules/admin/customers/customers.routes';
@@ -59,6 +61,7 @@ app.use('/api/customer-auth', customerAuthRoutes);
 
 // Public APIs
 app.use('/api/store', publicStoreRoutes);
+app.use('/api/carousel', publicCarouselRoutes);
 app.use('/api/products', publicProductsRoutes);
 app.use('/api/categories', publicCategoryRoutes);
 app.use('/api', checkoutRoutes);
@@ -66,6 +69,7 @@ app.use('/api/shipping-zones', publicShippingZonesRoutes);
 
 // Admin APIs (JWT required)
 app.use('/api/admin/store', adminStoreRoutes);
+app.use('/api/admin/carousel', adminCarouselRoutes);
 app.use('/api/admin/products', adminProductsRoutes);
 app.use('/api/admin/orders', adminOrdersRoutes);
 app.use('/api/admin/customers', adminCustomerRoutes);
