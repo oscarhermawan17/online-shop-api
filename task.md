@@ -23,7 +23,7 @@
 | # | Task | Description | SP | Status |
 |---|---|---|---|---|
 | 2.1 | Cart management | Add/remove items, order per unit (PCS) | 5 | Done |
-| 2.2 | Cart expiration & auto-cancel | Auto-cancel cart after 30 minutes of inactivity (duration configurable by admin) | 3 | Todo |
+| 2.2 | Order expiration & auto-cancel | Auto-cancel unpaid orders after 30 minutes; stock restored automatically. expiresAt set at checkout via ORDER_EXPIRY_MINUTES env. pg_cron runs every 5 mins in Supabase. Lazy fallback in API endpoints. | 3 | Done |
 | 2.3 | Minimum order validation | Enforce minimum order amount before checkout (configurable by admin) | 2 | Todo |
 
 ---

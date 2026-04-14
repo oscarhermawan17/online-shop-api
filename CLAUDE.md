@@ -63,8 +63,8 @@ All models have `storeId` except Store, HealthCheck, and VariantOptionValue (int
 | ProductOptionValue | Option values (e.g. "M", "Black") |
 | Variant | Sellable SKU; priceOverride, wholesalePriceOverride, stock |
 | VariantOptionValue | Join: Variant ↔ ProductOptionValue |
-| Order | status enum, expiresAt (24h), deliveryMethod (pickup/delivery) |
-| OrderItem | Immutable price/name snapshot |
+| Order | status enum, expiresAt (30mins), deliveryMethod (pickup/delivery) |
+| OrderItem | Price/name snapshot; includes variantId for stock restoration on expiry |
 | PaymentProof | Bank transfer image upload |
 | ShippingZone | District → cost mapping |
 | ShippingDriver | Courier master list |
@@ -152,6 +152,7 @@ PUT                               /api/admin/products/:id/discount
 |---|---|
 | 1.1 Ritel customer registration | Admin creates via POST /api/admin/customers; toggle-status endpoint exists |
 | 1.3 Customer type pricing | Guest → basePrice, Ritel (logged-in) → wholesalePrice; applied at checkout + product listing |
+| 2.2 Order expiration & auto-cancel | expiresAt = NOW() + ORDER_EXPIRY_MINUTES (default 30). pg_cron runs every 5 mins in Supabase (restores stock + sets expired_unpaid). Lazy fallback in getOrderStatus + uploadPaymentProof. |
 | 3.4 Product-specific discount | ProductDiscount model; independent % for Harga Normal + Harga Retail; toggle on/off; applies to all variants; PUT /admin/products/:id/discount |
 | 5.1 Delivery zone management | Full CRUD, admin + public endpoint |
 | 5.3 Courier assignment (retail) | Ship endpoint creates OrderShippingAssignment |
@@ -175,9 +176,7 @@ PUT                               /api/admin/products/:id/discount
 |---|---|
 | 1.4 Credit eligibility | No model |
 | 1.5 Credit term configuration | No model |
-| 2.2 Cart expiration & auto-cancel | Order.expiresAt exists but never enforced (no cron/job) |
 | 2.3 Minimum order validation | Not implemented |
-| 3.4 Product-specific discount | No model |
 | 3.5 Shipping discount rules | No model |
 | 4.1 Voucher generation | No model |
 | 4.2 Voucher redemption | No model |
@@ -186,3 +185,10 @@ PUT                               /api/admin/products/:id/discount
 | 6.4 Unpaid invoice enforcement | No model |
 | 9.1 Complaint submission | No model |
 | 9.3 Reminder notifications | No model |
+
+## Order Expiry Notes
+- `ORDER_EXPIRY_MINUTES=30` in `.env` — controls expiresAt at checkout
+- pg_cron job `expire-unpaid-orders` runs every 5 mins in Supabase SQL
+- Lazy fallback in `getOrderStatus` and `uploadPaymentProof`
+- Stock decremented at checkout, restored on expiry (both pg_cron + lazy)
+- `OrderItem.variantId` added to schema for stock restoration
