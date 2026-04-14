@@ -16,6 +16,7 @@ router.use(requireRole('staff'));
 router.get('/', ordersController.listOrders);
 router.get('/:id', ordersController.getOrder);
 router.patch('/:id/confirm', ordersController.confirmPayment);
+router.patch('/:id/settle-credit', ordersController.settleCredit);
 router.patch('/:id/ship', ordersController.shipOrder);
 router.patch('/:id/status', ordersController.updateOrderStatus);
 

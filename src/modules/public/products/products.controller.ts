@@ -1,8 +1,25 @@
 import { Response, NextFunction } from 'express';
 
 import { CustomerAuthRequest } from '../../../middlewares/customer-auth.middleware';
-import { sendSuccess } from '../../../utils/response';
+import { sendPaginatedSuccess, sendSuccess } from '../../../utils/response';
 import * as productsService from './products.service';
+
+const parseOptionalNumberQuery = (value: unknown) => {
+  if (typeof value !== 'string' || value.trim() === '') {
+    return undefined;
+  }
+
+  const parsedValue = Number(value);
+  return Number.isFinite(parsedValue) ? parsedValue : undefined;
+};
+
+const parseBooleanQuery = (value: unknown) => {
+  if (typeof value !== 'string') {
+    return false;
+  }
+
+  return value === 'true' || value === '1';
+};
 
 // ─── GET /products ────────────────────────────────────────────────────────────
 
@@ -14,9 +31,30 @@ export const listProducts = async (
   try {
     const storeId = req.query.storeId as string | undefined;
     const query = req.query.q as string | undefined;
+    const category = req.query.category as string | undefined;
+    const page = parseOptionalNumberQuery(req.query.page);
+    const limit = parseOptionalNumberQuery(req.query.limit);
+    const minPrice = parseOptionalNumberQuery(req.query.minPrice);
+    const maxPrice = parseOptionalNumberQuery(req.query.maxPrice);
+    const promoOnly = parseBooleanQuery(req.query.promoOnly);
     const isWholesale = !!req.customer;
-    const products = await productsService.listProducts(storeId, query, isWholesale);
-    sendSuccess(res, products, 'Products fetched successfully');
+    const result = await productsService.listProducts({
+      storeId,
+      query,
+      category,
+      page,
+      limit,
+      minPrice,
+      maxPrice,
+      promoOnly,
+      isWholesale,
+    });
+    sendPaginatedSuccess(
+      res,
+      result.data,
+      result.pagination,
+      'Products fetched successfully',
+    );
   } catch (error) {
     next(error);
   }

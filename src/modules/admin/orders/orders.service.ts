@@ -2,6 +2,7 @@ import { OrderStatus } from '@prisma/client';
 
 import prisma from '../../../config/prisma';
 import { AppError } from '../../../middlewares/error.middleware';
+import { getPaidCreditAmount, getRemainingCreditAmount, isCreditSettled } from '../../../utils/credit';
 import { toAdminOrderResponse } from './orders.mapper';
 
 const adminOrderInclude = {
@@ -55,6 +56,10 @@ export const confirmPayment = async (storeId: string, orderId: string) => {
     throw new AppError('Order not found', 404);
   }
 
+  if (order.paymentMethod === 'credit') {
+    throw new AppError('Order credit tidak menggunakan konfirmasi bukti pembayaran', 400);
+  }
+
   if (order.status !== 'waiting_confirmation') {
     throw new AppError(
       `Cannot confirm payment for order with status: ${order.status}`,
@@ -66,6 +71,65 @@ export const confirmPayment = async (storeId: string, orderId: string) => {
     where: { id: orderId },
     data: { status: 'paid' },
     include: adminOrderInclude,
+  });
+
+  return toAdminOrderResponse(updatedOrder);
+};
+
+export const settleCredit = async (storeId: string, orderId: string) => {
+  const order = await prisma.order.findFirst({
+    where: { id: orderId, storeId },
+    include: {
+      creditPayments: true,
+    },
+  });
+
+  if (!order) {
+    throw new AppError('Order not found', 404);
+  }
+
+  if (order.paymentMethod !== 'credit') {
+    throw new AppError('Order ini bukan transaksi credit', 400);
+  }
+
+  const paidAmount = getPaidCreditAmount(order.creditPayments);
+  const remainingAmount = getRemainingCreditAmount({
+    totalAmount: order.totalAmount,
+    paidAmount,
+    creditSettledAt: order.creditSettledAt,
+  });
+
+  if (isCreditSettled({
+    totalAmount: order.totalAmount,
+    paidAmount,
+    creditSettledAt: order.creditSettledAt,
+  }) || remainingAmount <= 0) {
+    throw new AppError('Invoice credit untuk order ini sudah dilunasi', 400);
+  }
+
+  if (order.status === 'cancelled' || order.status === 'expired_unpaid') {
+    throw new AppError(`Tidak bisa melunasi credit untuk order berstatus ${order.status}`, 400);
+  }
+
+  const settledAt = new Date();
+
+  const updatedOrder = await prisma.$transaction(async (tx) => {
+    await tx.creditPayment.create({
+      data: {
+        storeId,
+        orderId: order.id,
+        amount: remainingAmount,
+        receivedAt: settledAt,
+      },
+    });
+
+    return tx.order.update({
+      where: { id: orderId },
+      data: {
+        creditSettledAt: settledAt,
+      },
+      include: adminOrderInclude,
+    });
   });
 
   return toAdminOrderResponse(updatedOrder);

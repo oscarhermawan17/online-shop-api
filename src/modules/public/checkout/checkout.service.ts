@@ -1,5 +1,8 @@
+import { PaymentMethod } from '@prisma/client';
+
 import prisma from '../../../config/prisma';
 import { AppError } from '../../../middlewares/error.middleware';
+import { CREDIT_EXCLUDED_STATUSES, getPaidCreditAmount, getRemainingCreditAmount } from '../../../utils/credit';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -16,6 +19,7 @@ export interface CheckoutInput {
   customerEmail?: string;
   customerAddress?: string;
   deliveryMethod?: string;
+  paymentMethod?: PaymentMethod;
   notes?: string;
   shippingCost?: number;
   items: CheckoutItem[];
@@ -42,6 +46,48 @@ const generatePublicOrderId = (): string => {
   return `ORD-${timestamp}-${random}`;
 };
 
+const resolvePaymentMethod = (value?: string): PaymentMethod => {
+  if (value === 'credit') {
+    return 'credit';
+  }
+
+  return 'bank_transfer';
+};
+
+const getOutstandingCreditTotal = async (
+  storeId: string,
+  customerId: string,
+): Promise<number> => {
+  const orders = await prisma.order.findMany({
+    where: {
+      storeId,
+      customerId,
+      paymentMethod: 'credit',
+      status: {
+        notIn: CREDIT_EXCLUDED_STATUSES,
+      },
+    },
+    select: {
+      totalAmount: true,
+      creditSettledAt: true,
+      creditPayments: {
+        select: {
+          amount: true,
+        },
+      },
+    },
+  });
+
+  return orders.reduce((sum, order) => {
+    const paidAmount = getPaidCreditAmount(order.creditPayments);
+    return sum + getRemainingCreditAmount({
+      totalAmount: order.totalAmount,
+      paidAmount,
+      creditSettledAt: order.creditSettledAt,
+    });
+  }, 0);
+};
+
 // ─── Helper: Lazy expiry check ────────────────────────────────────────────────
 // Fallback for orders that pg_cron hasn't processed yet.
 // Restores stock and marks order as expired_unpaid.
@@ -49,10 +95,11 @@ const generatePublicOrderId = (): string => {
 const expireOrderIfNeeded = async (orderId: string): Promise<boolean> => {
   const order = await prisma.order.findUnique({
     where: { id: orderId },
-    include: { items: true },
+    include: { items: true, creditPayments: true },
   });
 
   if (!order || order.status !== 'pending_payment') return false;
+  if (order.paymentMethod === 'credit') return false;
   if (!order.expiresAt || order.expiresAt > new Date()) return false;
 
   // Restore stock for each item
@@ -79,9 +126,10 @@ const expireOrderIfNeeded = async (orderId: string): Promise<boolean> => {
 export const checkout = async (input: CheckoutInput) => {
   const {
     storeId, customerName, customerPhone, customerEmail,
-    customerAddress, deliveryMethod, notes, shippingCost,
+    customerAddress, deliveryMethod, paymentMethod: rawPaymentMethod, notes, shippingCost,
     items, authenticatedCustomerId,
   } = input;
+  const paymentMethod = resolvePaymentMethod(rawPaymentMethod);
 
   // Validate store exists
   const store = await prisma.store.findUnique({
@@ -100,6 +148,9 @@ export const checkout = async (input: CheckoutInput) => {
     });
     if (!customer) {
       throw new AppError('Authenticated customer not found', 404);
+    }
+    if (customer.storeId !== storeId) {
+      throw new AppError('Authenticated customer does not belong to this store', 400);
     }
   } else {
     customer = await prisma.customer.findUnique({
@@ -121,6 +172,10 @@ export const checkout = async (input: CheckoutInput) => {
         data: { email: customerEmail },
       });
     }
+  }
+
+  if (paymentMethod === 'credit' && !authenticatedCustomerId) {
+    throw new AppError('Metode pembayaran credit hanya tersedia untuk pelanggan yang login', 400);
   }
 
   // Process items and calculate total
@@ -234,28 +289,55 @@ export const checkout = async (input: CheckoutInput) => {
     );
   }
 
-  // Create order with expiry (configurable via ORDER_EXPIRY_MINUTES, default 30)
-  const expiryMinutes = parseInt(process.env.ORDER_EXPIRY_MINUTES ?? '30', 10);
-  const expiresAt = new Date(Date.now() + expiryMinutes * 60 * 1000);
-
   const qualifiesForFreeShipping = isDelivery
     && !!freeShippingMinimumOrder
     && totalAmount >= freeShippingMinimumOrder;
   const finalShippingCost = qualifiesForFreeShipping ? 0 : (shippingCost ?? 0);
+  const finalTotalAmount = totalAmount + finalShippingCost;
+
+  if (paymentMethod === 'credit') {
+    const customerCredit = await prisma.customerCredit.findFirst({
+      where: {
+        storeId,
+        customerId: customer.id,
+      },
+    });
+
+    if (!customerCredit || customerCredit.creditLimit <= 0) {
+      throw new AppError('Limit credit untuk pelanggan ini belum diatur', 400);
+    }
+
+    const outstandingCredit = await getOutstandingCreditTotal(storeId, customer.id);
+
+    if (outstandingCredit + finalTotalAmount > customerCredit.creditLimit) {
+      throw new AppError(
+        `Limit credit tidak mencukupi. Terpakai ${formatRupiah(outstandingCredit)} dari ${formatRupiah(customerCredit.creditLimit)}`,
+        400,
+      );
+    }
+  }
+
+  const expiryMinutes = parseInt(process.env.ORDER_EXPIRY_MINUTES ?? '30', 10);
+  const expiresAt = paymentMethod === 'bank_transfer'
+    ? new Date(Date.now() + expiryMinutes * 60 * 1000)
+    : null;
+  const initialStatus = paymentMethod === 'credit' ? 'paid' : 'pending_payment';
 
   const order = await prisma.order.create({
     data: {
       storeId,
       customerId: customer.id,
       publicOrderId: generatePublicOrderId(),
-      status: 'pending_payment',
+      status: initialStatus,
+      paymentMethod,
       customerName: customerName || customer.name || customerPhone,
       customerPhone,
       customerAddress: customerAddress || null,
       deliveryMethod: deliveryMethod || null,
       notes: notes || null,
       shippingCost: finalShippingCost,
-      totalAmount: totalAmount + finalShippingCost,
+      totalAmount: finalTotalAmount,
+      creditSettledAt: null,
       expiresAt,
       items: {
         createMany: { data: orderItems.map((item) => ({ ...item, storeId })) },
@@ -270,6 +352,7 @@ export const checkout = async (input: CheckoutInput) => {
   return {
     publicOrderId: order.publicOrderId,
     status: order.status,
+    paymentMethod: order.paymentMethod,
     totalAmount: order.totalAmount,
     expiresAt: order.expiresAt,
     shippingCost: order.shippingCost,
@@ -305,6 +388,10 @@ export const uploadPaymentProof = async (
   const wasExpired = await expireOrderIfNeeded(order.id);
   if (wasExpired) {
     throw new AppError('Order has expired. Please create a new order.', 400);
+  }
+
+  if (order.paymentMethod === 'credit') {
+    throw new AppError('Order credit tidak memerlukan upload bukti pembayaran', 400);
   }
 
   if (order.status !== 'pending_payment') {
@@ -345,6 +432,7 @@ export const uploadPaymentProof = async (
   return {
     publicOrderId: updatedOrder.publicOrderId,
     status: updatedOrder.status,
+    paymentMethod: updatedOrder.paymentMethod,
     paymentProof: updatedOrder.paymentProof,
   };
 };
@@ -384,6 +472,7 @@ export const getOrderStatus = async (publicOrderId: string) => {
   return {
     publicOrderId: order.publicOrderId,
     status: order.status,
+    paymentMethod: order.paymentMethod,
     customerName: order.customerName,
     customerPhone: order.customerPhone,
     customerAddress: order.customerAddress,
@@ -391,6 +480,7 @@ export const getOrderStatus = async (publicOrderId: string) => {
     notes: order.notes,
     shippingCost: order.shippingCost,
     totalAmount: order.totalAmount,
+    creditSettledAt: order.creditSettledAt,
     expiresAt: order.expiresAt,
     createdAt: order.createdAt,
     items: order.items,

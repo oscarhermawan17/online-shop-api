@@ -9,6 +9,21 @@ export interface SuccessResponse<T> {
   data: T;
 }
 
+export interface PaginationMeta {
+  page: number;
+  limit: number;
+  total: number;
+  totalPages: number;
+}
+
+export interface PaginatedSuccessResponse<T> {
+  success: true;
+  statusCode: number;
+  message: string;
+  data: T[];
+  pagination: PaginationMeta;
+}
+
 export interface ErrorResponse {
   success: false;
   statusCode: number;
@@ -30,6 +45,25 @@ export const sendSuccess = <T>(
     message,
     data,
   } satisfies SuccessResponse<T>);
+};
+
+/**
+ * Send a paginated success JSON response.
+ */
+export const sendPaginatedSuccess = <T>(
+  res: Response,
+  data: T[],
+  pagination: PaginationMeta,
+  message = 'Success',
+  statusCode = 200,
+): void => {
+  res.status(statusCode).json({
+    success: true,
+    statusCode,
+    message,
+    data,
+    pagination,
+  } satisfies PaginatedSuccessResponse<T>);
 };
 
 /**

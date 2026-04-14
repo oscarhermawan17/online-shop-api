@@ -10,6 +10,18 @@ type VariantWithOptions = ProductWithRelations['variants'][number];
 type VariantOptionValue = VariantWithOptions['optionValues'][number];
 type ProductSuggestionType = 'product' | 'category' | 'unit';
 
+export interface ListProductsInput {
+  storeId?: string;
+  query?: string;
+  category?: string;
+  minPrice?: number;
+  maxPrice?: number;
+  promoOnly?: boolean;
+  page?: number;
+  limit?: number;
+  isWholesale?: boolean;
+}
+
 export interface ProductSearchSuggestion {
   value: string;
   type: ProductSuggestionType;
@@ -22,11 +34,29 @@ const applyDiscount = (price: number, discountPercent: number | null | undefined
   return Math.round(price * (1 - discountPercent / 100));
 };
 
-const buildProductSearchWhere = (storeId?: string, query?: string): Prisma.ProductWhereInput => {
+const buildProductSearchWhere = (
+  storeId?: string,
+  query?: string,
+  category?: string,
+): Prisma.ProductWhereInput => {
   const normalizedQuery = query?.trim();
+  const normalizedCategory = category?.trim();
 
   return {
     ...(storeId ? { storeId } : {}),
+    isActive: true,
+    ...(normalizedCategory
+      ? {
+          categories: {
+            some: {
+              name: {
+                equals: normalizedCategory,
+                mode: 'insensitive',
+              },
+            },
+          },
+        }
+      : {}),
     ...(normalizedQuery
       ? {
           OR: [
@@ -66,6 +96,80 @@ const buildProductSearchWhere = (storeId?: string, query?: string): Prisma.Produ
         }
       : {}),
   };
+};
+
+const getProductPriceRange = (product: ReturnType<typeof formatProductForPublic>) => {
+  const variantPrices = product.variants
+    .map((variant) => variant.price ?? product.basePrice)
+    .filter((price): price is number => typeof price === 'number');
+
+  const allPrices = variantPrices.length > 0
+    ? [product.basePrice, ...variantPrices]
+    : [product.basePrice];
+
+  return {
+    minPrice: Math.min(...allPrices),
+    maxPrice: Math.max(...allPrices),
+  };
+};
+
+const normalizePriceRange = (
+  minPrice?: number,
+  maxPrice?: number,
+) => {
+  const normalizedMinPrice = Number.isFinite(minPrice) && Number(minPrice) >= 0
+    ? Number(minPrice)
+    : null;
+  const normalizedMaxPrice = Number.isFinite(maxPrice) && Number(maxPrice) >= 0
+    ? Number(maxPrice)
+    : null;
+
+  if (
+    normalizedMinPrice !== null
+    && normalizedMaxPrice !== null
+    && normalizedMinPrice > normalizedMaxPrice
+  ) {
+    return {
+      minPrice: normalizedMaxPrice,
+      maxPrice: normalizedMinPrice,
+    };
+  }
+
+  return {
+    minPrice: normalizedMinPrice,
+    maxPrice: normalizedMaxPrice,
+  };
+};
+
+const matchesPriceRange = (
+  product: ReturnType<typeof formatProductForPublic>,
+  minPrice: number | null,
+  maxPrice: number | null,
+) => {
+  const priceRange = getProductPriceRange(product);
+
+  if (minPrice !== null && priceRange.maxPrice < minPrice) {
+    return false;
+  }
+
+  if (maxPrice !== null && priceRange.minPrice > maxPrice) {
+    return false;
+  }
+
+  return true;
+};
+
+const matchesPromoOnly = (
+  product: ReturnType<typeof formatProductForPublic>,
+  promoOnly: boolean,
+) => {
+  if (!promoOnly) {
+    return true;
+  }
+
+  return !!product.discount && (
+    product.discount.normalDiscountActive || product.discount.retailDiscountActive
+  );
 };
 
 // ─── Helper: Format product for public API ────────────────────────────────────
@@ -139,13 +243,19 @@ const getProductById = (productId: string) => {
   });
 };
 
-export const listProducts = async (
-  storeId?: string,
-  query?: string,
-  isWholesale: boolean = false,
-) => {
+export const listProducts = async ({
+  storeId,
+  query,
+  category,
+  minPrice,
+  maxPrice,
+  promoOnly = false,
+  page = 1,
+  limit = 10,
+  isWholesale = false,
+}: ListProductsInput) => {
   const products = await prisma.product.findMany({
-    where: buildProductSearchWhere(storeId, query),
+    where: buildProductSearchWhere(storeId, query, category),
     include: {
       store: {
         select: {
@@ -172,7 +282,37 @@ export const listProducts = async (
     orderBy: { createdAt: 'desc' },
   });
 
-  return products.map((p) => formatProductForPublic(p, isWholesale));
+  const normalizedPage = Number.isInteger(page) && page > 0 ? page : 1;
+  const normalizedLimit = Number.isInteger(limit) && limit > 0
+    ? Math.min(limit, 50)
+    : 10;
+  const normalizedPriceRange = normalizePriceRange(minPrice, maxPrice);
+  const filteredProducts = products
+    .map((product) => formatProductForPublic(product, isWholesale))
+    .filter((product) => matchesPromoOnly(product, promoOnly))
+    .filter((product) => (
+      matchesPriceRange(
+        product,
+        normalizedPriceRange.minPrice,
+        normalizedPriceRange.maxPrice,
+      )
+    ));
+
+  const total = filteredProducts.length;
+  const totalPages = total > 0 ? Math.ceil(total / normalizedLimit) : 1;
+  const currentPage = Math.min(normalizedPage, totalPages);
+  const startIndex = (currentPage - 1) * normalizedLimit;
+  const data = filteredProducts.slice(startIndex, startIndex + normalizedLimit);
+
+  return {
+    data,
+    pagination: {
+      page: currentPage,
+      limit: normalizedLimit,
+      total,
+      totalPages,
+    },
+  };
 };
 
 export const listProductSuggestions = async (

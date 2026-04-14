@@ -54,6 +54,24 @@ export const confirmPayment = async (
   }
 };
 
+// ─── PATCH /admin/orders/:id/settle-credit ─────────────────────────────────────
+
+export const settleCredit = async (
+  req: AuthRequest,
+  res: Response,
+  next: NextFunction,
+): Promise<void> => {
+  try {
+    const order = await ordersService.settleCredit(
+      req.user!.storeId,
+      req.params.id as string,
+    );
+    sendSuccess(res, order, 'Credit invoice settled successfully');
+  } catch (error) {
+    next(error);
+  }
+};
+
 // ─── PATCH /admin/orders/:id/status ───────────────────────────────────────────
 
 export const updateOrderStatus = async (
