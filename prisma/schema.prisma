@@ -38,6 +38,11 @@ enum OrderStatus {
   expired_unpaid
 }
 
+enum PaymentMethod {
+  bank_transfer
+  credit
+}
+
 enum AdminRole {
   owner
   manager
@@ -83,10 +88,12 @@ model Store {
   variants           Variant[]
   orderItems         OrderItem[]
   paymentProofs      PaymentProof[]
+  creditPayments     CreditPayment[]
   shippingZones      ShippingZone[]
   shippingDrivers    ShippingDriver[]
   shippingShifts     ShippingShift[]
   shippingAssignments OrderShippingAssignment[]
+  customerCredits    CustomerCredit[]
   productDiscounts   ProductDiscount[]
   carouselSlides     CarouselSlide[]
 
@@ -251,6 +258,7 @@ model Customer {
   store     Store             @relation(fields: [storeId], references: [id], onDelete: Cascade)
   orders    Order[]
   addresses CustomerAddress[]
+  credit    CustomerCredit?
 
   @@unique([storeId, phone])
   @@index([storeId])
@@ -292,6 +300,7 @@ model Order {
   customerId      String
   publicOrderId   String      @unique // human-readable order reference
   status          OrderStatus @default(pending_payment)
+  paymentMethod   PaymentMethod @default(bank_transfer)
   customerName    String?     // snapshot at order time
   customerPhone   String?     // snapshot at order time
   customerAddress String?     // delivery address or store address for pickup
@@ -299,6 +308,7 @@ model Order {
   notes           String?
   shippingCost    Int         @default(0)
   totalAmount     Int
+  creditSettledAt DateTime?
   expiresAt       DateTime?
   createdAt       DateTime    @default(now())
   updatedAt       DateTime    @updatedAt
@@ -308,11 +318,44 @@ model Order {
   customer     Customer      @relation(fields: [customerId], references: [id])
   items        OrderItem[]
   paymentProof PaymentProof?
+  creditPayments CreditPayment[]
   shippingAssignment OrderShippingAssignment?
 
   @@index([storeId])
   @@index([customerId])
   @@map("orders")
+}
+
+model CustomerCredit {
+  id          String   @id @default(uuid())
+  storeId     String
+  customerId  String   @unique
+  creditLimit Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  store    Store    @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  customer Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+
+  @@index([storeId])
+  @@map("customer_credits")
+}
+
+model CreditPayment {
+  id         String   @id @default(uuid())
+  storeId    String
+  orderId    String
+  amount     Int
+  receivedAt DateTime
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  store Store @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  order Order @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  @@index([storeId])
+  @@index([orderId])
+  @@map("credit_payments")
 }
 
 // ─── OrderItem (Snapshot) ─────────────────────────────────────────────────────

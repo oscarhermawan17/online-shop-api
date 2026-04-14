@@ -5,6 +5,7 @@ export const getMyOrders = async (customerId: string) => {
     where: { customerId },
     include: {
       items: true,
+      paymentProof: true,
       shippingAssignment: {
         include: {
           shift: true,

@@ -24,6 +24,8 @@ import adminCarouselRoutes from './modules/admin/carousel/carousel.routes';
 import adminProductsRoutes from './modules/admin/products/products.routes';
 import adminOrdersRoutes from './modules/admin/orders/orders.routes';
 import adminCustomerRoutes from './modules/admin/customers/customers.routes';
+import adminCreditRoutes from './modules/admin/credit/credit.routes';
+import adminReceivablesRoutes from './modules/admin/receivables/receivables.routes';
 import adminShippingZonesRoutes from './modules/admin/shipping-zones/shipping-zones.routes';
 import adminShippingDriversRoutes from './modules/admin/shipping-drivers/shipping-drivers.routes';
 import adminShippingShiftsRoutes from './modules/admin/shipping-shifts/shipping-shifts.routes';
@@ -36,6 +38,7 @@ import unitRoutes from './routes/unit.routes';
 // Customer routes
 import customerOrdersRoutes from './modules/customer/orders/orders.routes';
 import customerAddressesRoutes from './modules/customer/addresses/addresses.routes';
+import customerCreditRoutes from './modules/customer/credit/credit.routes';
 
 const app: Application = express();
 
@@ -73,6 +76,8 @@ app.use('/api/admin/carousel', adminCarouselRoutes);
 app.use('/api/admin/products', adminProductsRoutes);
 app.use('/api/admin/orders', adminOrdersRoutes);
 app.use('/api/admin/customers', adminCustomerRoutes);
+app.use('/api/admin/credit', adminCreditRoutes);
+app.use('/api/admin/receivables', adminReceivablesRoutes);
 app.use('/api/admin/shipping-zones', adminShippingZonesRoutes);
 app.use('/api/admin/shipping-drivers', adminShippingDriversRoutes);
 app.use('/api/admin/shipping-shifts', adminShippingShiftsRoutes);
@@ -82,6 +87,7 @@ app.use('/api/admin/units', unitRoutes);
 // Customer APIs (customer JWT required)
 app.use('/api/customer/orders', customerOrdersRoutes);
 app.use('/api/customer/addresses', customerAddressesRoutes);
+app.use('/api/customer/credit', customerCreditRoutes);
 
 // ─── 404 Handler ─────────────────────────────────────────────────────────────
 app.use((_req: Request, res: Response) => {
