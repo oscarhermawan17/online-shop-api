@@ -124,7 +124,8 @@ POST                              /api/admin/products/:id/variants
 PATCH/DELETE                      /api/admin/products/:id/variants/:variantId
 
 # Customers — staff+
-GET/POST                          /api/admin/customers
+GET                               /api/admin/customers         (?page, ?limit=25|50|100, ?search, ?status=active|inactive) → paginated
+POST                              /api/admin/customers
 PATCH                             /api/admin/customers/:id/toggle-status
 
 # Credit — staff+
