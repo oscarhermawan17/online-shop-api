@@ -74,6 +74,8 @@ All models have `storeId` except Store, HealthCheck, and VariantOptionValue (int
 | CarouselSlide | Promotional banner slides; title, subtitle, badge, imageUrl, backgroundColor, isActive, sortOrder; max 10 per store |
 | Category | Product categories with icon; many-to-many with Product |
 | Unit | Product unit of measure (e.g. pcs, kg); one-to-many with Product |
+| CustomerCredit | Per-customer credit limit (admin-managed); one-to-one with Customer |
+| CreditPayment | Partial/full payment records against a credit order; many-to-one with Order |
 
 ---
 
@@ -102,6 +104,7 @@ GET    /api/customer/addresses
 POST   /api/customer/addresses
 PATCH  /api/customer/addresses/:id
 DELETE /api/customer/addresses/:id
+GET    /api/customer/credit
 ```
 
 ### Admin (requireAuth + requireRole)
@@ -123,6 +126,14 @@ PATCH/DELETE                      /api/admin/products/:id/variants/:variantId
 # Customers — staff+
 GET/POST                          /api/admin/customers
 PATCH                             /api/admin/customers/:id/toggle-status
+
+# Credit — staff+
+GET                               /api/admin/credit
+PUT                               /api/admin/credit/:customerId
+
+# Receivables — staff+
+GET                               /api/admin/receivables
+POST                              /api/admin/receivables/:id/payments
 
 # Orders — staff+
 GET                               /api/admin/orders
@@ -173,6 +184,8 @@ GET                               /api/admin/units/:id
 | 5.1 Delivery zone management | Full CRUD, admin + public endpoint |
 | 5.3 Courier assignment (retail) | Ship endpoint creates OrderShippingAssignment |
 | 6.2 Bank transfer payment flow | checkout → proof upload → admin confirm |
+| 6.3 Credit payment flow | Checkout accepts `paymentMethod: 'credit'` for authenticated customers; validates credit limit; order created with `status: paid`, `expiresAt: null`. Admin manages credit limits via `/api/admin/credit`. Credit invoices tracked via `/api/admin/receivables` with partial payment support (`CreditPayment`). Customer can view own credit summary at `/api/customer/credit`. |
+| 6.4 Unpaid invoice enforcement | Enforced at checkout: `outstandingCredit + newOrderTotal > creditLimit` → 400. Credit limit 0 = credit blocked. No explicit per-invoice block — limit-based enforcement. |
 | 7.1 Real-time stock visibility | Variant stock in product endpoints; decremented on checkout |
 | Carousel management | CarouselSlide model; admin PUT /api/admin/carousel (manager+); public GET /api/carousel (active slides) |
 | Category management | Category model; full CRUD at /api/admin/categories (staff+); public GET /api/categories |
@@ -194,13 +207,11 @@ GET                               /api/admin/units/:id
 ### ❌ Not Started
 | Task | Notes |
 |---|---|
-| 1.4 Credit eligibility | No model |
-| 1.5 Credit term configuration | No model |
+| 1.4 Credit eligibility | Auto-eligibility (3 cash transactions) not implemented. Admin manually sets credit limit as override — the "manual override" part works, but automatic 3-transaction gate does not. |
+| 1.5 Credit term configuration | No credit term (due date / grace period) model. Credit limit per customer exists but no configurable terms. |
 | 4.1 Voucher generation | No model |
 | 4.2 Voucher redemption | No model |
 | 5.5 Delivery SLA tracking | No model; OrderShippingAssignment has deliveryDate but no SLA deadline |
-| 6.3 Credit payment flow | No model |
-| 6.4 Unpaid invoice enforcement | No model |
 | 9.1 Complaint submission | No model |
 | 9.3 Reminder notifications | No model |
 

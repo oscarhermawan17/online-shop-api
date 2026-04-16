@@ -66,8 +66,8 @@
 | #   | Task                                | Description                                                                                          | SP  | Status |
 | --- | ----------------------------------- | ---------------------------------------------------------------------------------------------------- | --- | ------ |
 | 6.2 | Bank transfer payment flow          | Handle bank transfer submission, manual/auto confirmation, then process order                        | 5   | Done   |
-| 6.3 | Credit payment flow (B2B)           | Process orders on credit for eligible store customers; defer payment to agreed term                  | 8   | Todo   |
-| 6.4 | Unpaid invoice enforcement (Credit) | Block new orders for customers with outstanding invoices; admin can override, related to 1.4 and 1.5 | 3   | Todo   |
+| 6.3 | Credit payment flow (B2B)           | Process orders on credit for eligible store customers; defer payment to agreed term                  | 8   | Done   |
+| 6.4 | Unpaid invoice enforcement (Credit) | Block new orders for customers with outstanding invoices; admin can override, related to 1.4 and 1.5 | 3   | Done   |
 
 ---
 
