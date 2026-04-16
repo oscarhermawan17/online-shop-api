@@ -7,10 +7,11 @@ export interface CreateProductInput {
   name: string;
   description?: string;
   categoryIds?: string[];
-  unitId?: string;
-  basePrice: number;
-  wholesalePrice?: number;
-  stock: number;
+  unitId?: string | null;
+  basePrice?: number;
+  wholesalePrice?: number | null;
+  stock?: number;
+  variants?: CreateProductVariantInput[];
 }
 
 export interface UpdateProductInput {
@@ -41,6 +42,13 @@ export interface CreateVariantInput {
   optionValueIds?: string[];
 }
 
+export interface CreateProductVariantInput {
+  name?: string;
+  basePrice: number;
+  wholesalePrice?: number | null;
+  stock: number;
+}
+
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 const productInclude = {
@@ -52,11 +60,19 @@ const productInclude = {
   discount: true,
 };
 
+function getSellableVariants<T extends { isDefault: boolean }>(variants: T[]): T[] {
+  const realVariants = variants.filter((variant) => !variant.isDefault);
+  return realVariants.length > 0 ? realVariants : variants;
+}
+
 function withStock<T extends { variants: Array<{ isDefault: boolean; stock: number }> }>(
   product: T,
 ): T & { stock: number } {
-  const defaultVariant = product.variants.find((v) => v.isDefault);
-  return { ...product, stock: defaultVariant?.stock ?? 0 };
+  const sellableVariants = getSellableVariants(product.variants);
+  return {
+    ...product,
+    stock: sellableVariants.reduce((sum, variant) => sum + variant.stock, 0),
+  };
 }
 
 // ─── Product CRUD ─────────────────────────────────────────────────────────────
@@ -84,13 +100,59 @@ export const getProduct = async (storeId: string, productId: string) => {
 };
 
 export const createProduct = async (storeId: string, data: CreateProductInput) => {
+  const normalizedVariants = data.variants?.map((variant) => ({
+    name: variant.name?.trim() || null,
+    basePrice: variant.basePrice,
+    wholesalePrice: variant.wholesalePrice ?? null,
+    stock: variant.stock,
+  }));
+
+  if (normalizedVariants?.length) {
+    const [baseVariant] = normalizedVariants;
+    const baselineWholesalePrice = baseVariant.wholesalePrice ?? baseVariant.basePrice;
+
+    const product = await prisma.product.create({
+      data: {
+        storeId,
+        name: data.name,
+        description: data.description,
+        categories: data.categoryIds ? { connect: data.categoryIds.map((id) => ({ id })) } : undefined,
+        unitId: data.unitId ?? null,
+        basePrice: baseVariant.basePrice,
+        wholesalePrice:
+          baselineWholesalePrice === baseVariant.basePrice ? null : baselineWholesalePrice,
+        variants: {
+          create: normalizedVariants.map((variant) => ({
+            storeId,
+            name: variant.name,
+            isDefault: false,
+            priceOverride:
+              variant.basePrice === baseVariant.basePrice ? null : variant.basePrice,
+            wholesalePriceOverride:
+              (variant.wholesalePrice ?? variant.basePrice) === baselineWholesalePrice
+                ? null
+                : (variant.wholesalePrice ?? variant.basePrice),
+            stock: variant.stock,
+          })),
+        },
+      },
+      include: productInclude,
+    });
+
+    return withStock(product);
+  }
+
+  if (data.basePrice === undefined || data.stock === undefined) {
+    throw new AppError('basePrice and stock are required when variants are not provided', 400);
+  }
+
   const product = await prisma.product.create({
     data: {
       storeId,
       name: data.name,
       description: data.description,
       categories: data.categoryIds ? { connect: data.categoryIds.map((id) => ({ id })) } : undefined,
-      unitId: data.unitId,
+      unitId: data.unitId ?? null,
       basePrice: data.basePrice,
       wholesalePrice: data.wholesalePrice,
       variants: {
@@ -290,6 +352,10 @@ export const deleteProductVariant = async (
 ) => {
   await getProduct(storeId, productId);
 
+  const variantCount = await prisma.variant.count({
+    where: { productId },
+  });
+
   const variant = await prisma.variant.findFirst({
     where: { id: variantId, productId },
   });
@@ -300,6 +366,10 @@ export const deleteProductVariant = async (
 
   if (variant.isDefault) {
     throw new AppError('Cannot delete the default variant', 400);
+  }
+
+  if (variantCount <= 1) {
+    throw new AppError('Product must have at least one variant', 400);
   }
 
   await prisma.variant.delete({ where: { id: variantId } });

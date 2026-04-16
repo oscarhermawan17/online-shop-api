@@ -34,6 +34,11 @@ const applyDiscount = (price: number, discountPercent: number | null | undefined
   return Math.round(price * (1 - discountPercent / 100));
 };
 
+const getSellableVariants = (variants: ProductWithRelations['variants']) => {
+  const realVariants = variants.filter((variant) => !variant.isDefault);
+  return realVariants.length > 0 ? realVariants : variants;
+};
+
 const buildProductSearchWhere = (
   storeId?: string,
   query?: string,
@@ -176,6 +181,7 @@ const matchesPromoOnly = (
 
 const formatProductForPublic = (product: ProductWithRelations, isWholesale: boolean) => {
   const discount = product.discount;
+  const sellableVariants = getSellableVariants(product.variants);
 
   const rawBasePrice = isWholesale
     ? (product.wholesalePrice ?? product.basePrice)
@@ -189,7 +195,8 @@ const formatProductForPublic = (product: ProductWithRelations, isWholesale: bool
     ...product,
     basePrice: effectiveBasePrice,
     discount: discount ?? null,
-    variants: product.variants.map((variant: VariantWithOptions) => {
+    stock: sellableVariants.reduce((sum, variant) => sum + variant.stock, 0),
+    variants: sellableVariants.map((variant: VariantWithOptions) => {
       const retailPrice = variant.priceOverride ?? product.basePrice;
       const wholesalePrice = variant.wholesalePriceOverride ?? product.wholesalePrice ?? retailPrice;
       const rawPrice = isWholesale ? wholesalePrice : retailPrice;

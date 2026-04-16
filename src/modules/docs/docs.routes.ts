@@ -154,11 +154,29 @@ const openApiSpec = {
       },
       CreateProductRequest: {
         type: 'object',
-        required: ['name', 'basePrice'],
+        required: ['name', 'variants'],
         properties: {
           name: { type: 'string', example: 'New Product' },
           description: { type: 'string', example: 'Product description' },
-          basePrice: { type: 'integer', example: 100000 },
+          categoryIds: {
+            type: 'array',
+            items: { type: 'string', format: 'uuid' },
+          },
+          unitId: { type: 'string', format: 'uuid', nullable: true },
+          variants: {
+            type: 'array',
+            minItems: 1,
+            items: {
+              type: 'object',
+              required: ['basePrice', 'stock'],
+              properties: {
+                name: { type: 'string', example: '500ml' },
+                basePrice: { type: 'integer', example: 100000 },
+                wholesalePrice: { type: 'integer', nullable: true, example: 95000 },
+                stock: { type: 'integer', example: 10 },
+              },
+            },
+          },
         },
       },
       UpdateProductRequest: {
