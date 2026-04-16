@@ -1,4 +1,5 @@
 import bcrypt from 'bcryptjs';
+import { Prisma } from '@prisma/client';
 
 import prisma from '../../../config/prisma';
 import { AppError } from '../../../middlewares/error.middleware';
@@ -13,21 +14,51 @@ export interface CreateCustomerInput {
   password: string;
 }
 
+export interface ListCustomersParams {
+  storeId: string;
+  page: number;
+  limit: number;
+  search?: string;
+  status?: 'active' | 'inactive';
+}
+
 // ─── Service ──────────────────────────────────────────────────────────────────
 
-export const listCustomers = async (storeId: string) => {
-  return prisma.customer.findMany({
-    where: { storeId },
-    select: {
-      id: true,
-      name: true,
-      phone: true,
-      email: true,
-      isActive: true,
-      createdAt: true,
-    },
-    orderBy: { createdAt: 'desc' },
-  });
+export const listCustomers = async (params: ListCustomersParams) => {
+  const { storeId, page, limit, search, status } = params;
+  const skip = (page - 1) * limit;
+
+  const where: Prisma.CustomerWhereInput = {
+    storeId,
+    ...(status !== undefined && { isActive: status === 'active' }),
+    ...(search && {
+      OR: [
+        { name:  { contains: search, mode: 'insensitive' } },
+        { phone: { contains: search, mode: 'insensitive' } },
+        { email: { contains: search, mode: 'insensitive' } },
+      ],
+    }),
+  };
+
+  const [total, customers] = await Promise.all([
+    prisma.customer.count({ where }),
+    prisma.customer.findMany({
+      where,
+      select: {
+        id: true,
+        name: true,
+        phone: true,
+        email: true,
+        isActive: true,
+        createdAt: true,
+      },
+      orderBy: { createdAt: 'desc' },
+      skip,
+      take: limit,
+    }),
+  ]);
+
+  return { customers, total };
 };
 
 export const createCustomer = async (input: CreateCustomerInput) => {
