@@ -207,6 +207,8 @@ const formatProductForPublic = (product: ProductWithRelations, isWholesale: bool
 
       return {
         id: variant.id,
+        name: variant.name,
+        imageUrl: variant.imageUrl,
         stock: variant.stock,
         price,
         options: variant.optionValues.map((ov: VariantOptionValue) => ({

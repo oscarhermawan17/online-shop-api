@@ -171,6 +171,7 @@ const openApiSpec = {
               required: ['basePrice', 'stock'],
               properties: {
                 name: { type: 'string', example: '500ml' },
+                imageUrl: { type: 'string', nullable: true, example: 'https://example.com/variant.jpg' },
                 basePrice: { type: 'integer', example: 100000 },
                 wholesalePrice: { type: 'integer', nullable: true, example: 95000 },
                 stock: { type: 'integer', example: 10 },
@@ -211,6 +212,7 @@ const openApiSpec = {
         required: ['stock', 'optionValueIds'],
         properties: {
           sku: { type: 'string', example: 'SKU-001' },
+          imageUrl: { type: 'string', nullable: true, example: 'https://example.com/variant.jpg' },
           priceOverride: { type: 'integer', nullable: true, example: 120000 },
           stock: { type: 'integer', example: 10 },
           optionValueIds: {

@@ -208,6 +208,7 @@ model Variant {
   storeId       String
   productId     String
   name          String?
+  imageUrl      String?
   isDefault     Boolean  @default(false)
   priceOverride          Int?     // null → use product.basePrice
   wholesalePriceOverride Int?     // null → use product.wholesalePrice

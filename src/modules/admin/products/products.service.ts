@@ -36,6 +36,7 @@ export interface CreateProductOptionInput {
 
 export interface CreateVariantInput {
   name?: string;
+  imageUrl?: string | null;
   priceOverride?: number;
   wholesalePriceOverride?: number;
   stock: number;
@@ -44,6 +45,7 @@ export interface CreateVariantInput {
 
 export interface CreateProductVariantInput {
   name?: string;
+  imageUrl?: string | null;
   basePrice: number;
   wholesalePrice?: number | null;
   stock: number;
@@ -102,6 +104,7 @@ export const getProduct = async (storeId: string, productId: string) => {
 export const createProduct = async (storeId: string, data: CreateProductInput) => {
   const normalizedVariants = data.variants?.map((variant) => ({
     name: variant.name?.trim() || null,
+    imageUrl: variant.imageUrl ?? null,
     basePrice: variant.basePrice,
     wholesalePrice: variant.wholesalePrice ?? null,
     stock: variant.stock,
@@ -125,6 +128,7 @@ export const createProduct = async (storeId: string, data: CreateProductInput) =
           create: normalizedVariants.map((variant) => ({
             storeId,
             name: variant.name,
+            imageUrl: variant.imageUrl,
             isDefault: false,
             priceOverride:
               variant.basePrice === baseVariant.basePrice ? null : variant.basePrice,
@@ -304,6 +308,7 @@ export const addProductVariant = async (
       storeId,
       productId,
       name: data.name,
+      imageUrl: data.imageUrl ?? null,
       priceOverride: data.priceOverride,
       wholesalePriceOverride: data.wholesalePriceOverride,
       stock: data.stock,
@@ -326,7 +331,13 @@ export const updateProductVariant = async (
   storeId: string,
   productId: string,
   variantId: string,
-  data: { name?: string; priceOverride?: number | null; wholesalePriceOverride?: number | null; stock?: number },
+  data: {
+    name?: string;
+    imageUrl?: string | null;
+    priceOverride?: number | null;
+    wholesalePriceOverride?: number | null;
+    stock?: number;
+  },
 ) => {
   await getProduct(storeId, productId);
 
