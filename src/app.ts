@@ -20,6 +20,7 @@ import publicCategoryRoutes from './routes/public.category.routes';
 
 // Admin routes
 import adminStoreRoutes from './modules/admin/store/store.routes';
+import adminDashboardRoutes from './modules/admin/dashboard/dashboard.routes';
 import adminCarouselRoutes from './modules/admin/carousel/carousel.routes';
 import adminProductsRoutes from './modules/admin/products/products.routes';
 import adminOrdersRoutes from './modules/admin/orders/orders.routes';
@@ -72,6 +73,7 @@ app.use('/api/shipping-zones', publicShippingZonesRoutes);
 
 // Admin APIs (JWT required)
 app.use('/api/admin/store', adminStoreRoutes);
+app.use('/api/admin/dashboard', adminDashboardRoutes);
 app.use('/api/admin/carousel', adminCarouselRoutes);
 app.use('/api/admin/products', adminProductsRoutes);
 app.use('/api/admin/orders', adminOrdersRoutes);
