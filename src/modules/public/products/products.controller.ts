@@ -1,5 +1,6 @@
 import { Response, NextFunction } from 'express';
 
+import prisma from '../../../config/prisma';
 import { CustomerAuthRequest } from '../../../middlewares/customer-auth.middleware';
 import { sendPaginatedSuccess, sendSuccess } from '../../../utils/response';
 import * as productsService from './products.service';
@@ -21,6 +22,26 @@ const parseBooleanQuery = (value: unknown) => {
   return value === 'true' || value === '1';
 };
 
+const resolveIsWholesaleCustomer = async (req: CustomerAuthRequest): Promise<boolean> => {
+  if (!req.customer?.customerId) {
+    return false;
+  }
+
+  const customer = await prisma.customer.findUnique({
+    where: { id: req.customer.customerId },
+    select: {
+      type: true,
+      isActive: true,
+      storeId: true,
+    },
+  });
+
+  return !!customer
+    && customer.isActive
+    && customer.storeId === req.customer.storeId
+    && customer.type === 'wholesale';
+};
+
 // ─── GET /products ────────────────────────────────────────────────────────────
 
 export const listProducts = async (
@@ -37,7 +58,7 @@ export const listProducts = async (
     const minPrice = parseOptionalNumberQuery(req.query.minPrice);
     const maxPrice = parseOptionalNumberQuery(req.query.maxPrice);
     const promoOnly = parseBooleanQuery(req.query.promoOnly);
-    const isWholesale = !!req.customer;
+    const isWholesale = await resolveIsWholesaleCustomer(req);
     const result = await productsService.listProducts({
       storeId,
       query,
@@ -85,7 +106,7 @@ export const getProduct = async (
   next: NextFunction,
 ): Promise<void> => {
   try {
-    const isWholesale = !!req.customer;
+    const isWholesale = await resolveIsWholesaleCustomer(req);
     const product = await productsService.getProduct(req.params.id as string, isWholesale);
     sendSuccess(res, product, 'Product fetched successfully');
   } catch (error) {

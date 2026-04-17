@@ -49,6 +49,11 @@ enum AdminRole {
   staff
 }
 
+enum CustomerType {
+  base
+  wholesale
+}
+
 // ─── Store ────────────────────────────────────────────────────────────────────
 // Represents a tenant store profile. Each deployment typically maps
 // to one Store row via DATABASE_URL.
@@ -251,6 +256,7 @@ model Customer {
   phone     String
   email     String?
   password  String?  // null = guest, non-null = registered
+  type      CustomerType @default(base)
   isActive  Boolean  @default(true)
   createdAt DateTime @default(now())
   updatedAt DateTime @default(now()) @updatedAt
