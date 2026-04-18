@@ -79,6 +79,21 @@
 
 ---
 
+## Epic 0: Infrastructure & DevOps
+
+| #   | Task | Description | SP | Status |
+| --- | ---- | ----------- | -- | ------ |
+| 0.1 | Docker Compose setup | Single docker-compose with prod + stg services; nginx routing both domains | 3 | Done |
+| 0.2 | Staging domain SSL | `stg.tokotimika.my.id` with Let's Encrypt cert | 1 | Done |
+| 0.3 | CI/CD multi-branch | GitHub Actions: `main` → `:latest`, `stg` → `:staging`; auto-deploy to VPS via SSH | 3 | Done |
+| 0.4 | Deploy user | Minimal `deploy` user on VPS; docker + umkm group only; SSH key in GitHub secrets | 1 | Done |
+| 0.5 | Local PostgreSQL for stg | Replace Supabase cloud with PostgreSQL Docker container for stg | 3 | Todo |
+| 0.6 | MinIO for stg | Replace Cloudinary with MinIO Docker container for stg; update upload code | 5 | Todo |
+| 0.7 | node-cron for stg | Replace pg_cron with node-cron inside Express for order expiry | 2 | Todo |
+| 0.8 | Migrate prod to local stack | Move prod from Supabase cloud + Cloudinary → VPS local (after stg is stable) | 5 | Todo |
+
+---
+
 ## Epic 8: Dashboard & Reporting
 
 | #   | Task                | Description                                                                                                                                 | SP  | Status |

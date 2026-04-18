@@ -79,6 +79,15 @@ All models have `storeId` except Store, HealthCheck, and VariantOptionValue (int
 
 ---
 
+## Deployment
+
+- **Prod**: `ghcr.io/oscarhermawan17/online-shop-api:latest` — port 4000
+- **Stg**: `ghcr.io/oscarhermawan17/online-shop-api:staging` — port 8000
+- CI/CD: push to `main` → `:latest`, push to `stg` → `:staging`, auto-deploys to VPS
+- VPS path: `/home/ubuntu/umkm/docker-compose.yaml`
+
+---
+
 ## All Endpoints
 
 ### Public (no auth)
