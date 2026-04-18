@@ -16,5 +16,6 @@ router.post('/', customersController.createCustomer);
 
 // PATCH /admin/customers/:id/toggle-status — enable/disable customer
 router.patch('/:id/toggle-status', customersController.toggleStatus);
+router.patch('/:id/type', customersController.updateType);
 
 export default router;

@@ -1,5 +1,6 @@
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
+import { CustomerType } from '@prisma/client';
 
 import prisma from '../../config/prisma';
 import { AppError } from '../../middlewares/error.middleware';
@@ -13,6 +14,14 @@ export interface CustomerLoginInput {
   password: string;
 }
 
+export interface CustomerRegisterInput {
+  storeId: string;
+  name: string;
+  phone: string;
+  email?: string;
+  password: string;
+}
+
 export interface CustomerLoginResult {
   token: string;
   customer: {
@@ -20,6 +29,17 @@ export interface CustomerLoginResult {
     name: string | null;
     phone: string;
     email: string | null;
+    type: CustomerType;
+  };
+}
+
+export interface CurrentCustomerResult {
+  customer: {
+    id: string;
+    name: string | null;
+    phone: string;
+    email: string | null;
+    type: CustomerType;
   };
 }
 
@@ -39,6 +59,10 @@ export const login = async (input: CustomerLoginInput): Promise<CustomerLoginRes
   // No account or guest account (no password) → same generic error
   if (!customer || customer.password === null) {
     throw new AppError('Invalid credentials', 401);
+  }
+
+  if (!customer.isActive) {
+    throw new AppError('Akun pelanggan ini sedang dinonaktifkan', 403);
   }
 
   // Verify password
@@ -68,6 +92,114 @@ export const login = async (input: CustomerLoginInput): Promise<CustomerLoginRes
       name: customer.name,
       phone: customer.phone,
       email: customer.email,
+      type: customer.type,
+    },
+  };
+};
+
+export const register = async (input: CustomerRegisterInput): Promise<CustomerLoginResult> => {
+  const { storeId, name, phone, email, password } = input;
+
+  const store = await prisma.store.findUnique({
+    where: { id: storeId },
+    select: { id: true },
+  });
+
+  if (!store) {
+    throw new AppError('Store not found', 404);
+  }
+
+  const existingCustomer = await prisma.customer.findUnique({
+    where: { storeId_phone: { storeId, phone } },
+  });
+
+  if (existingCustomer?.password) {
+    throw new AppError('Nomor HP sudah terdaftar. Silakan login.', 409);
+  }
+
+  if (email) {
+    const existingEmailCustomer = await prisma.customer.findFirst({
+      where: {
+        storeId,
+        email,
+        ...(existingCustomer ? { id: { not: existingCustomer.id } } : {}),
+      },
+      select: { id: true },
+    });
+
+    if (existingEmailCustomer) {
+      throw new AppError('Email sudah digunakan oleh akun lain', 409);
+    }
+  }
+
+  const hashedPassword = await bcrypt.hash(password, 10);
+
+  const customer = existingCustomer
+    ? await prisma.customer.update({
+        where: { id: existingCustomer.id },
+        data: {
+          name,
+          email: email ?? null,
+          password: hashedPassword,
+          type: 'base',
+          isActive: true,
+        },
+      })
+    : await prisma.customer.create({
+        data: {
+          storeId,
+          name,
+          phone,
+          email: email ?? null,
+          password: hashedPassword,
+          type: 'base',
+        },
+      });
+
+  return login({
+    storeId,
+    identifier: customer.phone,
+    password,
+  });
+};
+
+export const getCurrentCustomer = async (
+  customerId: string,
+  storeId: string,
+): Promise<CurrentCustomerResult> => {
+  const customer = await prisma.customer.findFirst({
+    where: {
+      id: customerId,
+      storeId,
+      password: {
+        not: null,
+      },
+    },
+    select: {
+      id: true,
+      name: true,
+      phone: true,
+      email: true,
+      type: true,
+      isActive: true,
+    },
+  });
+
+  if (!customer) {
+    throw new AppError('Customer not found', 404);
+  }
+
+  if (!customer.isActive) {
+    throw new AppError('Akun pelanggan ini sedang dinonaktifkan', 403);
+  }
+
+  return {
+    customer: {
+      id: customer.id,
+      name: customer.name,
+      phone: customer.phone,
+      email: customer.email,
+      type: customer.type,
     },
   };
 };

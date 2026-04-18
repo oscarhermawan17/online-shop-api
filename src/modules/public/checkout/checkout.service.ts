@@ -152,6 +152,10 @@ export const checkout = async (input: CheckoutInput) => {
     if (customer.storeId !== storeId) {
       throw new AppError('Authenticated customer does not belong to this store', 400);
     }
+
+    if (!customer.isActive) {
+      throw new AppError('Akun pelanggan ini sedang dinonaktifkan', 403);
+    }
   } else {
     customer = await prisma.customer.findUnique({
       where: { storeId_phone: { storeId, phone: customerPhone } },
@@ -174,8 +178,14 @@ export const checkout = async (input: CheckoutInput) => {
     }
   }
 
+  const isWholesaleCustomer = customer.type === 'wholesale';
+
   if (paymentMethod === 'credit' && !authenticatedCustomerId) {
-    throw new AppError('Metode pembayaran credit hanya tersedia untuk pelanggan yang login', 400);
+    throw new AppError('Metode pembayaran credit hanya tersedia untuk user wholesale yang login', 400);
+  }
+
+  if (paymentMethod === 'credit' && !isWholesaleCustomer) {
+    throw new AppError('Metode pembayaran credit hanya tersedia untuk user wholesale', 400);
   }
 
   // Process items and calculate total
@@ -211,7 +221,7 @@ export const checkout = async (input: CheckoutInput) => {
       throw new AppError(`Product does not belong to this store`, 400);
     }
 
-    const isWholesale = !!authenticatedCustomerId;
+    const isWholesale = isWholesaleCustomer;
     const discount = product.discount;
 
     const applyDiscount = (p: number, pct: number | null | undefined) =>
@@ -272,18 +282,17 @@ export const checkout = async (input: CheckoutInput) => {
   }
 
   const isDelivery = deliveryMethod === 'delivery';
-  const isStoreCustomer = !!authenticatedCustomerId;
-  const minimumOrder = isStoreCustomer
+  const minimumOrder = isWholesaleCustomer
     ? store.deliveryStoreMinimumOrder
     : store.deliveryRetailMinimumOrder;
-  const freeShippingMinimumOrder = isStoreCustomer
+  const freeShippingMinimumOrder = isWholesaleCustomer
     ? store.deliveryStoreFreeShippingMinimumOrder
     : store.deliveryRetailFreeShippingMinimumOrder;
 
   if (isDelivery && minimumOrder && totalAmount < minimumOrder) {
     throw new AppError(
       `Minimal belanja untuk pengiriman ${
-        isStoreCustomer ? 'toko' : 'retail'
+        isWholesaleCustomer ? 'wholesale' : 'base'
       } adalah ${formatRupiah(minimumOrder)}`,
       400,
     );

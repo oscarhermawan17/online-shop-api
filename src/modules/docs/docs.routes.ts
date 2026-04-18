@@ -154,11 +154,30 @@ const openApiSpec = {
       },
       CreateProductRequest: {
         type: 'object',
-        required: ['name', 'basePrice'],
+        required: ['name', 'variants'],
         properties: {
           name: { type: 'string', example: 'New Product' },
           description: { type: 'string', example: 'Product description' },
-          basePrice: { type: 'integer', example: 100000 },
+          categoryIds: {
+            type: 'array',
+            items: { type: 'string', format: 'uuid' },
+          },
+          unitId: { type: 'string', format: 'uuid', nullable: true },
+          variants: {
+            type: 'array',
+            minItems: 1,
+            items: {
+              type: 'object',
+              required: ['basePrice', 'stock'],
+              properties: {
+                name: { type: 'string', example: '500ml' },
+                imageUrl: { type: 'string', nullable: true, example: 'https://example.com/variant.jpg' },
+                basePrice: { type: 'integer', example: 100000 },
+                wholesalePrice: { type: 'integer', nullable: true, example: 95000 },
+                stock: { type: 'integer', example: 10 },
+              },
+            },
+          },
         },
       },
       UpdateProductRequest: {
@@ -193,6 +212,7 @@ const openApiSpec = {
         required: ['stock', 'optionValueIds'],
         properties: {
           sku: { type: 'string', example: 'SKU-001' },
+          imageUrl: { type: 'string', nullable: true, example: 'https://example.com/variant.jpg' },
           priceOverride: { type: 'integer', nullable: true, example: 120000 },
           stock: { type: 'integer', example: 10 },
           optionValueIds: {

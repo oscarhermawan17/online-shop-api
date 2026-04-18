@@ -4,7 +4,10 @@ import { CREDIT_EXCLUDED_STATUSES, getPaidCreditAmount, getRemainingCreditAmount
 
 export const listCredits = async (storeId: string) => {
   const customers = await prisma.customer.findMany({
-    where: { storeId },
+    where: {
+      storeId,
+      type: 'wholesale',
+    },
     include: {
       credit: true,
       orders: {
@@ -54,6 +57,7 @@ export const listCredits = async (storeId: string) => {
       name: customer.name,
       phone: customer.phone,
       email: customer.email,
+      type: customer.type,
       isActive: customer.isActive,
       hasAccount: !!customer.password,
       createdAt: customer.createdAt,
@@ -89,11 +93,16 @@ export const upsertCreditLimit = async (
       id: true,
       name: true,
       phone: true,
+      type: true,
     },
   });
 
   if (!customer) {
     throw new AppError('Customer not found', 404);
+  }
+
+  if (customer.type !== 'wholesale') {
+    throw new AppError('Limit credit hanya bisa diatur untuk user wholesale', 400);
   }
 
   const credit = await prisma.customerCredit.upsert({

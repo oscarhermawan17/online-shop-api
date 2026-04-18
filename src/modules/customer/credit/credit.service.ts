@@ -1,10 +1,30 @@
 import prisma from '../../../config/prisma';
+import { AppError } from '../../../middlewares/error.middleware';
 import { CREDIT_EXCLUDED_STATUSES, getPaidCreditAmount, getRemainingCreditAmount } from '../../../utils/credit';
 
 export const getMyCreditSummary = async (
   storeId: string,
   customerId: string,
 ) => {
+  const customer = await prisma.customer.findFirst({
+    where: {
+      id: customerId,
+      storeId,
+    },
+    select: {
+      type: true,
+      isActive: true,
+    },
+  });
+
+  if (!customer || !customer.isActive) {
+    throw new AppError('Customer not found', 404);
+  }
+
+  if (customer.type !== 'wholesale') {
+    throw new AppError('Ringkasan credit hanya tersedia untuk user wholesale', 403);
+  }
+
   const credit = await prisma.customerCredit.findFirst({
     where: {
       storeId,
