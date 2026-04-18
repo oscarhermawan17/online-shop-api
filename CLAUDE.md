@@ -55,7 +55,7 @@ All models have `storeId` except Store, HealthCheck, and VariantOptionValue (int
 |---|---|
 | Store | Tenant config (bank details, QRIS, WhatsApp) |
 | Admin | Admin accounts; roles: owner / manager / staff |
-| Customer | Store-scoped customers; password nullable (guest) |
+| Customer | Store-scoped customers; password nullable (guest); `type`: base (guest pricing) or wholesale (retail pricing) |
 | CustomerAddress | Saved delivery addresses |
 | Product | Has basePrice + wholesalePrice |
 | ProductImage | Gallery images |
@@ -123,10 +123,14 @@ POST/DELETE                       /api/admin/products/:id/options/:optionId
 POST                              /api/admin/products/:id/variants
 PATCH/DELETE                      /api/admin/products/:id/variants/:variantId
 
+# Dashboard — staff+
+GET                               /api/admin/dashboard         (?period=today|yesterday|this_month|last_month|custom, ?startDate, ?endDate) → sales stats, growth %, trend chart, item rankings
+
 # Customers — staff+
 GET                               /api/admin/customers         (?page, ?limit=25|50|100, ?search, ?status=active|inactive) → paginated
 POST                              /api/admin/customers
 PATCH                             /api/admin/customers/:id/toggle-status
+PATCH                             /api/admin/customers/:id/type  → update CustomerType (base | wholesale)
 
 # Credit — staff+
 GET                               /api/admin/credit
@@ -178,8 +182,9 @@ GET                               /api/admin/units/:id
 ### ✅ Actually Done
 | Task | Notes |
 |---|---|
-| 1.1 Ritel customer registration | Admin creates via POST /api/admin/customers; toggle-status endpoint exists |
-| 1.3 Customer type pricing | Guest → basePrice, Ritel (logged-in) → wholesalePrice; applied at checkout + product listing |
+| 1.1 Ritel customer registration | Admin creates via POST /api/admin/customers; toggle-status endpoint exists; PATCH /:id/type to change base↔wholesale |
+| 1.3 Customer type pricing | Guest → basePrice, Ritel (logged-in) → wholesalePrice; applied at checkout + product listing; `type` stored on Customer row (CustomerType enum) |
+| Dashboard | GET /api/admin/dashboard; period filter (today/yesterday/this_month/last_month/custom); returns totalSales, totalOrders, newCustomers + growth % vs prev period; sales trend chart (hourly or daily); item rankings by qty and value |
 | 2.2 Order expiration & auto-cancel | expiresAt = NOW() + ORDER_EXPIRY_MINUTES (default 30). pg_cron runs every 5 mins in Supabase (restores stock + sets expired_unpaid). Lazy fallback in getOrderStatus + uploadPaymentProof. |
 | 3.4 Product-specific discount | ProductDiscount model; independent % for Harga Normal + Harga Retail; toggle on/off; applies to all variants; PUT /admin/products/:id/discount |
 | 5.1 Delivery zone management | Full CRUD, admin + public endpoint |
@@ -193,8 +198,9 @@ GET                               /api/admin/units/:id
 | Unit management | Unit model; full CRUD at /api/admin/units (staff+) |
 
 ## Customer Types
-- **Guest** — non-login, pays `basePrice`. Auto-created on checkout.
-- **Ritel** — registered, pays `wholesalePrice`. Admin creates only. Can buy 1 or bulk.
+- **Guest** — non-login (`type: base`), pays `basePrice`. Auto-created on checkout.
+- **Ritel** — registered (`type: wholesale`), pays `wholesalePrice`. Admin creates only. Can buy 1 or bulk.
+- `type` is persisted as `CustomerType` enum on the `customers` table. Admin can change it via `PATCH /api/admin/customers/:id/type`.
 - No B2B/B2C distinction. Task 1.2 (store customer) was removed as N/A.
 - Pricing logic: checkout and product listing apply `wholesalePrice` when `authenticatedCustomerId` is present.
 

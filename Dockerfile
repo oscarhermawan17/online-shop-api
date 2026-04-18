@@ -34,6 +34,6 @@ COPY --from=builder /app/node_modules ./node_modules
 # copy compiled code
 COPY --from=builder /app/dist ./dist
 
-EXPOSE 5000
+EXPOSE 4000
 
 CMD ["node", "dist/server.js"]
