@@ -56,7 +56,7 @@ export interface CreateProductVariantInput {
 const productInclude = {
   categories: true,
   unit: true,
-  images: true,
+  images: { orderBy: { createdAt: 'asc' as const } },
   options: { include: { values: true } },
   variants: { include: { optionValues: { include: { optionValue: true } } } },
   discount: true,
