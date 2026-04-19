@@ -14,6 +14,7 @@ router.use(requireRole('staff'));
 // ─── Product CRUD ─────────────────────────────────────────────────────────────
 
 router.get('/', productsController.listProducts);
+router.get('/export/inventory', productsController.exportInventory);
 router.get('/:id', productsController.getProduct);
 router.post('/', productsController.createProduct);
 router.patch('/:id', productsController.updateProduct);

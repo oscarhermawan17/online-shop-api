@@ -9,6 +9,7 @@ router.use(requireAuth);
 router.use(requireRole('staff'));
 
 router.get('/', receivablesController.listReceivables);
+router.get('/export', receivablesController.exportReceivables);
 router.post('/:id/payments', receivablesController.addPayment);
 
 export default router;
