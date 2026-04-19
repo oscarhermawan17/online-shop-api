@@ -36,6 +36,7 @@ COPY --from=builder /app/dist ./dist
 
 # copy prisma schema (needed for db push/seed)
 COPY --from=builder /app/prisma ./prisma
+COPY --from=builder /app/tsconfig.seed.json ./tsconfig.seed.json
 
 EXPOSE 4000
 
