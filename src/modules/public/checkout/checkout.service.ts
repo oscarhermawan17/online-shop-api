@@ -1,4 +1,4 @@
-import { PaymentMethod } from '@prisma/client';
+import { PaymentMethod, Prisma } from '@prisma/client';
 
 import prisma from '../../../config/prisma';
 import { AppError } from '../../../middlewares/error.middleware';
@@ -38,6 +38,18 @@ const formatRupiah = (amount: number): string =>
     minimumFractionDigits: 0,
     maximumFractionDigits: 0,
   }).format(amount);
+
+const ORDER_ITEM_SNAPSHOT_FIELDS = ['originalPrice', 'discountAmount', 'discountRuleName'] as const;
+
+const supportsOrderItemDiscountSnapshot = (() => {
+  const orderItemModel = Prisma.dmmf.datamodel.models.find((model) => model.name === 'OrderItem');
+  if (!orderItemModel) {
+    return false;
+  }
+
+  const fieldNames = new Set(orderItemModel.fields.map((field) => field.name));
+  return ORDER_ITEM_SNAPSHOT_FIELDS.every((field) => fieldNames.has(field));
+})();
 
 // ─── Helper: Generate public order ID ─────────────────────────────────────────
 
@@ -195,7 +207,10 @@ export const checkout = async (input: CheckoutInput) => {
     variantId: string | null;
     productName: string;
     variantDescription: string | null;
+    originalPrice: number;
     price: number;
+    discountAmount: number;
+    discountRuleName: string | null;
     quantity: number;
   }[] = [];
 
@@ -274,7 +289,10 @@ export const checkout = async (input: CheckoutInput) => {
       variantId: variant.id,
       productName: product.name,
       variantDescription,
+      originalPrice: rawUnitPrice,
       price: pricing.effectiveUnitPrice,
+      discountAmount: pricing.lineDiscount,
+      discountRuleName: pricing.rule?.name ?? null,
       quantity: item.quantity,
     });
 
@@ -349,7 +367,23 @@ export const checkout = async (input: CheckoutInput) => {
       creditSettledAt: null,
       expiresAt,
       items: {
-        createMany: { data: orderItems.map((item) => ({ ...item, storeId })) },
+        createMany: {
+          data: orderItems.map((item) => ({
+            variantId: item.variantId,
+            productName: item.productName,
+            variantDescription: item.variantDescription,
+            price: item.price,
+            quantity: item.quantity,
+            storeId,
+            ...(supportsOrderItemDiscountSnapshot
+              ? {
+                originalPrice: item.originalPrice,
+                discountAmount: item.discountAmount,
+                discountRuleName: item.discountRuleName,
+              }
+              : {}),
+          })),
+        },
       },
     },
     include: {

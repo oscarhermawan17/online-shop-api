@@ -420,7 +420,10 @@ model OrderItem {
   variantId          String? // kept for stock restoration on expiry/cancel
   productName        String
   variantDescription String?
+  originalPrice      Int?
   price              Int
+  discountAmount     Int     @default(0)
+  discountRuleName   String?
   quantity           Int
 
   // Relations
@@ -609,4 +612,3 @@ model Unit {
   @@index([storeId])
   @@map("units")
 }
-

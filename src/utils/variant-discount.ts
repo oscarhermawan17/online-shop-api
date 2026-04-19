@@ -7,6 +7,7 @@ import {
 
 export interface VariantDiscountRuleLike {
   id: string;
+  name?: string | null;
   triggerType: DiscountTriggerType;
   minThreshold: number;
   maxThreshold: number | null;
