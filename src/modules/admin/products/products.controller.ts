@@ -415,6 +415,80 @@ export const updateProductVariant = async (
   }
 };
 
+
+// ─── Variant Discount Rules ───────────────────────────────────────────────────
+
+export const listVariantDiscountRules = async (
+  req: AuthRequest,
+  res: Response,
+  next: NextFunction,
+): Promise<void> => {
+  try {
+    const rules = await productsService.listVariantDiscountRules(
+      req.user!.storeId,
+      req.params.id as string,
+      req.params.variantId as string,
+    );
+    sendSuccess(res, rules, 'Variant discount rules fetched successfully');
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const createVariantDiscountRule = async (
+  req: AuthRequest,
+  res: Response,
+  next: NextFunction,
+): Promise<void> => {
+  try {
+    const rule = await productsService.createVariantDiscountRule(
+      req.user!.storeId,
+      req.params.id as string,
+      req.params.variantId as string,
+      req.body,
+    );
+    sendSuccess(res, rule, 'Variant discount rule created successfully', 201);
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const updateVariantDiscountRule = async (
+  req: AuthRequest,
+  res: Response,
+  next: NextFunction,
+): Promise<void> => {
+  try {
+    const rule = await productsService.updateVariantDiscountRule(
+      req.user!.storeId,
+      req.params.id as string,
+      req.params.variantId as string,
+      req.params.ruleId as string,
+      req.body,
+    );
+    sendSuccess(res, rule, 'Variant discount rule updated successfully');
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const deleteVariantDiscountRule = async (
+  req: AuthRequest,
+  res: Response,
+  next: NextFunction,
+): Promise<void> => {
+  try {
+    await productsService.deleteVariantDiscountRule(
+      req.user!.storeId,
+      req.params.id as string,
+      req.params.variantId as string,
+      req.params.ruleId as string,
+    );
+    sendSuccess(res, null, 'Variant discount rule deleted successfully');
+  } catch (error) {
+    next(error);
+  }
+};
 // ─── PUT /admin/products/:id/discount ────────────────────────────────────────
 
 export const upsertDiscount = async (

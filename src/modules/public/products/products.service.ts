@@ -2,6 +2,7 @@ import { Prisma } from '@prisma/client';
 
 import prisma from '../../../config/prisma';
 import { AppError } from '../../../middlewares/error.middleware';
+import { resolveVariantDiscount } from '../../../utils/variant-discount';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -27,12 +28,6 @@ export interface ProductSearchSuggestion {
   type: ProductSuggestionType;
 }
 
-// ─── Helper: Apply discount to a price ───────────────────────────────────────
-
-const applyDiscount = (price: number, discountPercent: number | null | undefined): number => {
-  if (!discountPercent) return price;
-  return Math.round(price * (1 - discountPercent / 100));
-};
 
 const getSellableVariants = (variants: ProductWithRelations['variants']) => {
   const realVariants = variants.filter((variant) => !variant.isDefault);
@@ -172,52 +167,58 @@ const matchesPromoOnly = (
     return true;
   }
 
-  return !!product.discount && (
-    product.discount.normalDiscountActive || product.discount.retailDiscountActive
-  );
+  return product.hasVariantPromo;
 };
 
 // ─── Helper: Format product for public API ────────────────────────────────────
 
 const formatProductForPublic = (product: ProductWithRelations, isWholesale: boolean) => {
-  const discount = product.discount;
+  const customerType = isWholesale ? 'wholesale' : 'base';
   const sellableVariants = getSellableVariants(product.variants);
 
   const rawBasePrice = isWholesale
     ? (product.wholesalePrice ?? product.basePrice)
     : product.basePrice;
 
-  const effectiveBasePrice = isWholesale
-    ? (discount?.retailDiscountActive ? applyDiscount(rawBasePrice, discount.retailDiscount) : rawBasePrice)
-    : (discount?.normalDiscountActive ? applyDiscount(rawBasePrice, discount.normalDiscount) : rawBasePrice);
+  const resolvedVariants = sellableVariants.map((variant: VariantWithOptions) => {
+    const retailPrice = variant.priceOverride ?? product.basePrice;
+    const wholesalePrice = variant.wholesalePriceOverride ?? product.wholesalePrice ?? retailPrice;
+    const rawPrice = isWholesale ? wholesalePrice : retailPrice;
+
+    const pricing = resolveVariantDiscount(variant.discountRules, {
+      quantity: 1,
+      unitPrice: rawPrice,
+      customerType,
+    });
+
+    return {
+      id: variant.id,
+      name: variant.name,
+      imageUrl: variant.imageUrl,
+      stock: variant.stock,
+      price: pricing.effectiveUnitPrice,
+      activeDiscountRuleId: pricing.rule?.id ?? null,
+      discountRules: variant.discountRules,
+      options: variant.optionValues.map((ov: VariantOptionValue) => ({
+        optionId: ov.optionValue.optionId,
+        optionValueId: ov.optionValueId,
+        value: ov.optionValue.value,
+      })),
+    };
+  });
+
+  const effectiveBasePrice = resolvedVariants.length > 0
+    ? Math.min(...resolvedVariants.map((variant) => variant.price))
+    : rawBasePrice;
 
   return {
     ...product,
     basePrice: effectiveBasePrice,
-    discount: discount ?? null,
+    // Keep legacy field for compatibility but stop using product-level discount.
+    discount: null,
+    hasVariantPromo: sellableVariants.some((variant) => variant.discountRules.length > 0),
     stock: sellableVariants.reduce((sum, variant) => sum + variant.stock, 0),
-    variants: sellableVariants.map((variant: VariantWithOptions) => {
-      const retailPrice = variant.priceOverride ?? product.basePrice;
-      const wholesalePrice = variant.wholesalePriceOverride ?? product.wholesalePrice ?? retailPrice;
-      const rawPrice = isWholesale ? wholesalePrice : retailPrice;
-
-      const price = isWholesale
-        ? (discount?.retailDiscountActive ? applyDiscount(rawPrice, discount.retailDiscount) : rawPrice)
-        : (discount?.normalDiscountActive ? applyDiscount(rawPrice, discount.normalDiscount) : rawPrice);
-
-      return {
-        id: variant.id,
-        name: variant.name,
-        imageUrl: variant.imageUrl,
-        stock: variant.stock,
-        price,
-        options: variant.optionValues.map((ov: VariantOptionValue) => ({
-          optionId: ov.optionValue.optionId,
-          optionValueId: ov.optionValueId,
-          value: ov.optionValue.value,
-        })),
-      };
-    }),
+    variants: resolvedVariants,
   };
 };
 
@@ -244,6 +245,14 @@ const getProductById = (productId: string) => {
             include: {
               optionValue: true,
             },
+          },
+          discountRules: {
+            where: { isActive: true },
+            orderBy: [
+              { priority: 'desc' },
+              { minThreshold: 'desc' },
+              { createdAt: 'asc' },
+            ],
           },
         },
       },
@@ -283,6 +292,14 @@ export const listProducts = async ({
             include: {
               optionValue: true,
             },
+          },
+          discountRules: {
+            where: { isActive: true },
+            orderBy: [
+              { priority: 'desc' },
+              { minThreshold: 'desc' },
+              { createdAt: 'asc' },
+            ],
           },
         },
       },

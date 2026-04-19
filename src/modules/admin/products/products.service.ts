@@ -1,3 +1,10 @@
+import {
+  CustomerType,
+  DiscountApplyMode,
+  DiscountTriggerType,
+  DiscountValueType,
+} from '@prisma/client';
+
 import prisma from '../../../config/prisma';
 import { AppError } from '../../../middlewares/error.middleware';
 
@@ -51,14 +58,51 @@ export interface CreateProductVariantInput {
   stock: number;
 }
 
+export interface CreateVariantDiscountRuleInput {
+  name?: string | null;
+  triggerType: DiscountTriggerType;
+  minThreshold: number;
+  maxThreshold?: number | null;
+  valueType: DiscountValueType;
+  value: number;
+  applyMode: DiscountApplyMode;
+  customerType?: CustomerType | null;
+  isActive?: boolean;
+  priority?: number;
+}
+
+export interface UpdateVariantDiscountRuleInput {
+  name?: string | null;
+  triggerType?: DiscountTriggerType;
+  minThreshold?: number;
+  maxThreshold?: number | null;
+  valueType?: DiscountValueType;
+  value?: number;
+  applyMode?: DiscountApplyMode;
+  customerType?: CustomerType | null;
+  isActive?: boolean;
+  priority?: number;
+}
+
 // ─── Helpers ──────────────────────────────────────────────────────────────────
+
+const variantInclude = {
+  optionValues: { include: { optionValue: true } },
+  discountRules: {
+    orderBy: [
+      { priority: 'desc' as const },
+      { minThreshold: 'desc' as const },
+      { createdAt: 'asc' as const },
+    ],
+  },
+};
 
 const productInclude = {
   categories: true,
   unit: true,
   images: { orderBy: { createdAt: 'asc' as const } },
   options: { include: { values: true } },
-  variants: { include: { optionValues: { include: { optionValue: true } } } },
+  variants: { include: variantInclude },
   discount: true,
 };
 
@@ -76,6 +120,138 @@ function withStock<T extends { variants: Array<{ isDefault: boolean; stock: numb
     stock: sellableVariants.reduce((sum, variant) => sum + variant.stock, 0),
   };
 }
+
+const assertVariantOwnership = async (
+  storeId: string,
+  productId: string,
+  variantId: string,
+) => {
+  const variant = await prisma.variant.findFirst({
+    where: {
+      id: variantId,
+      productId,
+      storeId,
+    },
+  });
+
+  if (!variant) {
+    throw new AppError('Variant not found', 404);
+  }
+
+  return variant;
+};
+
+const normalizeRuleInput = (
+  input: CreateVariantDiscountRuleInput | UpdateVariantDiscountRuleInput,
+) => {
+  const normalized: UpdateVariantDiscountRuleInput = {
+    ...input,
+  };
+
+  if (Object.prototype.hasOwnProperty.call(input, 'name')) {
+    normalized.name = input.name?.trim() || null;
+  }
+
+  if (Object.prototype.hasOwnProperty.call(input, 'maxThreshold')) {
+    normalized.maxThreshold = input.maxThreshold ?? null;
+  }
+
+  if (Object.prototype.hasOwnProperty.call(input, 'customerType')) {
+    normalized.customerType = input.customerType ?? null;
+  }
+
+  return normalized;
+};
+
+const validateRuleInput = (
+  input: UpdateVariantDiscountRuleInput,
+  isPartial: boolean,
+) => {
+  const requiredFields: Array<keyof CreateVariantDiscountRuleInput> = [
+    'triggerType',
+    'minThreshold',
+    'valueType',
+    'value',
+    'applyMode',
+  ];
+
+  if (!isPartial) {
+    for (const field of requiredFields) {
+      if (input[field] === undefined) {
+        throw new AppError(`Field ${field} is required`, 400);
+      }
+    }
+  }
+
+  if (input.triggerType !== undefined) {
+    const validTrigger = input.triggerType === 'quantity' || input.triggerType === 'line_subtotal';
+    if (!validTrigger) {
+      throw new AppError('Invalid triggerType', 400);
+    }
+  }
+
+  if (input.minThreshold !== undefined) {
+    if (!Number.isInteger(input.minThreshold) || input.minThreshold < 1) {
+      throw new AppError('minThreshold must be an integer >= 1', 400);
+    }
+  }
+
+  if (input.maxThreshold !== undefined && input.maxThreshold !== null) {
+    if (!Number.isInteger(input.maxThreshold) || input.maxThreshold < 1) {
+      throw new AppError('maxThreshold must be an integer >= 1', 400);
+    }
+  }
+
+  if (
+    input.minThreshold !== undefined
+    && input.maxThreshold !== undefined
+    && input.maxThreshold !== null
+    && input.maxThreshold < input.minThreshold
+  ) {
+    throw new AppError('maxThreshold must be greater than or equal to minThreshold', 400);
+  }
+
+  if (input.valueType !== undefined) {
+    const validValueType = input.valueType === 'percentage' || input.valueType === 'fixed_amount';
+    if (!validValueType) {
+      throw new AppError('Invalid valueType', 400);
+    }
+  }
+
+  if (input.value !== undefined) {
+    if (!Number.isInteger(input.value) || input.value <= 0) {
+      throw new AppError('value must be an integer > 0', 400);
+    }
+  }
+
+  if (
+    input.valueType === 'percentage'
+    && input.value !== undefined
+    && (input.value < 1 || input.value > 100)
+  ) {
+    throw new AppError('Percentage value must be between 1 and 100', 400);
+  }
+
+  if (input.applyMode !== undefined) {
+    const validApplyMode = input.applyMode === 'per_item' || input.applyMode === 'line_total';
+    if (!validApplyMode) {
+      throw new AppError('Invalid applyMode', 400);
+    }
+  }
+
+  if (
+    input.customerType !== undefined
+    && input.customerType !== null
+    && input.customerType !== 'base'
+    && input.customerType !== 'wholesale'
+  ) {
+    throw new AppError('Invalid customerType', 400);
+  }
+
+  if (input.priority !== undefined && !Number.isInteger(input.priority)) {
+    throw new AppError('priority must be an integer', 400);
+  }
+};
 
 // ─── Product CRUD ─────────────────────────────────────────────────────────────
 
@@ -323,7 +499,7 @@ export const addProductVariant = async (
           }
         : {}),
     },
-    include: { optionValues: { include: { optionValue: true } } },
+    include: variantInclude,
   });
 };
 
@@ -352,7 +528,7 @@ export const updateProductVariant = async (
   return prisma.variant.update({
     where: { id: variantId },
     data,
-    include: { optionValues: { include: { optionValue: true } } },
+    include: variantInclude,
   });
 };
 
@@ -386,7 +562,140 @@ export const deleteProductVariant = async (
   await prisma.variant.delete({ where: { id: variantId } });
 };
 
-// ─── Product Discount ─────────────────────────────────────────────────────────
+// ─── Variant Discount Rules ───────────────────────────────────────────────────
+
+export const listVariantDiscountRules = async (
+  storeId: string,
+  productId: string,
+  variantId: string,
+) => {
+  await assertVariantOwnership(storeId, productId, variantId);
+
+  return prisma.variantDiscountRule.findMany({
+    where: {
+      storeId,
+      variantId,
+    },
+    orderBy: [
+      { isActive: 'desc' },
+      { priority: 'desc' },
+      { minThreshold: 'desc' },
+      { createdAt: 'asc' },
+    ],
+  });
+};
+
+export const createVariantDiscountRule = async (
+  storeId: string,
+  productId: string,
+  variantId: string,
+  data: CreateVariantDiscountRuleInput,
+) => {
+  await assertVariantOwnership(storeId, productId, variantId);
+
+  const normalized = normalizeRuleInput(data);
+  validateRuleInput(normalized, false);
+
+  return prisma.variantDiscountRule.create({
+    data: {
+      storeId,
+      variantId,
+      name: normalized.name ?? null,
+      triggerType: normalized.triggerType!,
+      minThreshold: normalized.minThreshold!,
+      maxThreshold: normalized.maxThreshold ?? null,
+      valueType: normalized.valueType!,
+      value: normalized.value!,
+      applyMode: normalized.applyMode!,
+      customerType: normalized.customerType ?? null,
+      isActive: normalized.isActive ?? true,
+      priority: normalized.priority ?? 0,
+    },
+  });
+};
+
+export const updateVariantDiscountRule = async (
+  storeId: string,
+  productId: string,
+  variantId: string,
+  ruleId: string,
+  data: UpdateVariantDiscountRuleInput,
+) => {
+  await assertVariantOwnership(storeId, productId, variantId);
+
+  const existing = await prisma.variantDiscountRule.findFirst({
+    where: {
+      id: ruleId,
+      storeId,
+      variantId,
+    },
+  });
+
+  if (!existing) {
+    throw new AppError('Variant discount rule not found', 404);
+  }
+
+  const normalized = normalizeRuleInput(data);
+
+  const merged: UpdateVariantDiscountRuleInput = {
+    name: normalized.name ?? existing.name,
+    triggerType: normalized.triggerType ?? existing.triggerType,
+    minThreshold: normalized.minThreshold ?? existing.minThreshold,
+    maxThreshold: normalized.maxThreshold ?? existing.maxThreshold,
+    valueType: normalized.valueType ?? existing.valueType,
+    value: normalized.value ?? existing.value,
+    applyMode: normalized.applyMode ?? existing.applyMode,
+    customerType: normalized.customerType ?? existing.customerType,
+    isActive: normalized.isActive ?? existing.isActive,
+    priority: normalized.priority ?? existing.priority,
+  };
+
+  validateRuleInput(merged, false);
+
+  return prisma.variantDiscountRule.update({
+    where: { id: existing.id },
+    data: {
+      name: normalized.name !== undefined ? normalized.name : undefined,
+      triggerType: normalized.triggerType,
+      minThreshold: normalized.minThreshold,
+      maxThreshold: normalized.maxThreshold,
+      valueType: normalized.valueType,
+      value: normalized.value,
+      applyMode: normalized.applyMode,
+      customerType: normalized.customerType,
+      isActive: normalized.isActive,
+      priority: normalized.priority,
+    },
+  });
+};
+
+export const deleteVariantDiscountRule = async (
+  storeId: string,
+  productId: string,
+  variantId: string,
+  ruleId: string,
+) => {
+  await assertVariantOwnership(storeId, productId, variantId);
+
+  const existing = await prisma.variantDiscountRule.findFirst({
+    where: {
+      id: ruleId,
+      storeId,
+      variantId,
+    },
+    select: { id: true },
+  });
+
+  if (!existing) {
+    throw new AppError('Variant discount rule not found', 404);
+  }
+
+  await prisma.variantDiscountRule.delete({
+    where: { id: existing.id },
+  });
+};
+
+// ─── Product Discount (legacy) ───────────────────────────────────────────────
 
 export interface UpsertDiscountInput {
   normalDiscount?: number | null;
