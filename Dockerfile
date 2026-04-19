@@ -34,6 +34,9 @@ COPY --from=builder /app/node_modules ./node_modules
 # copy compiled code
 COPY --from=builder /app/dist ./dist
 
+# copy prisma schema (needed for db push/seed)
+COPY --from=builder /app/prisma ./prisma
+
 EXPOSE 4000
 
 CMD ["node", "dist/server.js"]
