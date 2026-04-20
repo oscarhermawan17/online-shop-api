@@ -7,7 +7,7 @@ import { recordStockMovement } from '../../../utils/stock-ledger';
 const CATEGORY_LABELS: Record<StockMovementCategory, string> = {
   initial_stock: 'stok awal',
   add_stock: 'tambah stok',
-  sale: 'penjualan',
+  sale: 'checkout',
   restore: 'restore',
 };
 
@@ -51,6 +51,9 @@ export const toMovementResponse = (
     variant: { name: string | null };
     createdByAdmin: { email: string | null } | null;
   },
+  options?: {
+    categoryLabelOverride?: string;
+  },
 ) => ({
   id: movement.id,
   createdAt: movement.createdAt,
@@ -61,7 +64,7 @@ export const toMovementResponse = (
   stockStatus: movement.stockStatus,
   stockStatusLabel: STATUS_LABELS[movement.stockStatus],
   category: movement.category,
-  categoryLabel: CATEGORY_LABELS[movement.category],
+  categoryLabel: options?.categoryLabelOverride ?? CATEGORY_LABELS[movement.category],
   quantity: movement.quantity,
   inQty: movement.stockStatus === 'in' ? movement.quantity : 0,
   outQty: movement.stockStatus === 'out' ? movement.quantity : 0,
@@ -71,6 +74,26 @@ export const toMovementResponse = (
   referenceId: movement.referenceId,
   createdByAdmin: movement.createdByAdmin?.email ?? null,
 });
+
+const resolveSaleLabelFromOrderStatus = (status?: string): string => {
+  if (status === 'paid' || status === 'shipped' || status === 'done') {
+    return 'penjualan';
+  }
+
+  if (status === 'cancelled' || status === 'expired_unpaid') {
+    return 'reservasi checkout (dibatalkan)';
+  }
+
+  if (status === 'waiting_confirmation') {
+    return 'reservasi checkout (menunggu konfirmasi)';
+  }
+
+  if (status === 'pending_payment') {
+    return 'reservasi checkout';
+  }
+
+  return 'checkout / penjualan';
+};
 
 export const listStockMovements = async (input: ListStockMovementsInput) => {
   const { storeId, startDate, endDateExclusive, productId, variantId, category } = input;
@@ -112,7 +135,46 @@ export const listStockMovements = async (input: ListStockMovementsInput) => {
     orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
   });
 
-  return movements.map(toMovementResponse);
+  const checkoutReferenceIds = Array.from(new Set(
+    movements
+      .filter(
+        (movement) =>
+          movement.category === 'sale'
+          && movement.referenceType === 'checkout'
+          && !!movement.referenceId,
+      )
+      .map((movement) => movement.referenceId as string),
+  ));
+
+  const orderStatusByPublicId = new Map<string, string>();
+  if (checkoutReferenceIds.length > 0) {
+    const orders = await prisma.order.findMany({
+      where: {
+        storeId,
+        publicOrderId: {
+          in: checkoutReferenceIds,
+        },
+      },
+      select: {
+        publicOrderId: true,
+        status: true,
+      },
+    });
+
+    for (const order of orders) {
+      orderStatusByPublicId.set(order.publicOrderId, order.status);
+    }
+  }
+
+  return movements.map((movement) => {
+    const categoryLabelOverride = movement.category === 'sale'
+      ? resolveSaleLabelFromOrderStatus(
+          movement.referenceId ? orderStatusByPublicId.get(movement.referenceId) : undefined,
+        )
+      : undefined;
+
+    return toMovementResponse(movement, { categoryLabelOverride });
+  });
 };
 
 export const addStockAdjustment = async (input: AddStockAdjustmentInput) => {

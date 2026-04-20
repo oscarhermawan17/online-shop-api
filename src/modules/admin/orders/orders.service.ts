@@ -3,6 +3,7 @@ import { OrderStatus } from '@prisma/client';
 import prisma from '../../../config/prisma';
 import { AppError } from '../../../middlewares/error.middleware';
 import { getPaidCreditAmount, getRemainingCreditAmount, isCreditSettled } from '../../../utils/credit';
+import { restoreOrderStock } from '../../../utils/order-stock';
 import { toAdminOrderResponse } from './orders.mapper';
 
 const adminOrderInclude = {
@@ -142,16 +143,66 @@ export const updateOrderStatus = async (
 ) => {
   const existingOrder = await prisma.order.findFirst({
     where: { id: orderId, storeId },
+    include: {
+      items: {
+        select: {
+          variantId: true,
+          quantity: true,
+        },
+      },
+    },
   });
 
   if (!existingOrder) {
     throw new AppError('Order not found', 404);
   }
 
-  const updatedOrder = await prisma.order.update({
-    where: { id: orderId },
-    data: { status },
-    include: adminOrderInclude,
+  const shouldRestoreReservedStock = (
+    (status === 'cancelled' || status === 'expired_unpaid')
+    && (existingOrder.status === 'pending_payment' || existingOrder.status === 'waiting_confirmation')
+  );
+
+  const updatedOrder = await prisma.$transaction(async (tx) => {
+    if (shouldRestoreReservedStock) {
+      const transition = await tx.order.updateMany({
+        where: {
+          id: orderId,
+          storeId,
+          status: {
+            in: ['pending_payment', 'waiting_confirmation'],
+          },
+        },
+        data: { status },
+      });
+
+      if (transition.count === 0) {
+        throw new AppError('Order status sudah berubah, silakan muat ulang data', 409);
+      }
+
+      await restoreOrderStock(tx, {
+        storeId,
+        orderId,
+        items: existingOrder.items,
+        notes: `Restore stok otomatis karena order diubah ke status ${status}`,
+      });
+
+      const order = await tx.order.findFirst({
+        where: { id: orderId, storeId },
+        include: adminOrderInclude,
+      });
+
+      if (!order) {
+        throw new AppError('Order not found', 404);
+      }
+
+      return order;
+    }
+
+    return tx.order.update({
+      where: { id: orderId },
+      data: { status },
+      include: adminOrderInclude,
+    });
   });
 
   return toAdminOrderResponse(updatedOrder);

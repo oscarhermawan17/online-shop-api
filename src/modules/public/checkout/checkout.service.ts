@@ -3,6 +3,7 @@ import { PaymentMethod, Prisma } from '@prisma/client';
 import prisma from '../../../config/prisma';
 import { AppError } from '../../../middlewares/error.middleware';
 import { CREDIT_EXCLUDED_STATUSES, getPaidCreditAmount, getRemainingCreditAmount } from '../../../utils/credit';
+import { restoreOrderStock } from '../../../utils/order-stock';
 import { recordStockMovement } from '../../../utils/stock-ledger';
 import { resolveVariantDiscount } from '../../../utils/variant-discount';
 
@@ -107,50 +108,49 @@ const getOutstandingCreditTotal = async (
 // Restores stock and marks order as expired_unpaid.
 
 const expireOrderIfNeeded = async (orderId: string): Promise<boolean> => {
-  const order = await prisma.order.findUnique({
-    where: { id: orderId },
-    include: { items: true, creditPayments: true },
-  });
-
-  if (!order || order.status !== 'pending_payment') return false;
-  if (order.paymentMethod === 'credit') return false;
-  if (!order.expiresAt || order.expiresAt > new Date()) return false;
-
-  // Restore stock for each item
-  for (const item of order.items) {
-    if (item.variantId) {
-      const restoredVariant = await prisma.variant.update({
-        where: { id: item.variantId },
-        data: { stock: { increment: item.quantity } },
-        select: {
-          id: true,
-          productId: true,
-          stock: true,
+  return prisma.$transaction(async (tx) => {
+    const order = await tx.order.findUnique({
+      where: { id: orderId },
+      select: {
+        id: true,
+        storeId: true,
+        status: true,
+        paymentMethod: true,
+        expiresAt: true,
+        items: {
+          select: {
+            variantId: true,
+            quantity: true,
+          },
         },
-      });
+      },
+    });
 
-      await recordStockMovement(prisma, {
-        storeId: order.storeId,
-        productId: restoredVariant.productId,
-        variantId: restoredVariant.id,
-        stockStatus: 'in',
-        quantity: item.quantity,
-        category: 'restore',
-        balanceAfter: restoredVariant.stock,
-        referenceType: 'order',
-        referenceId: order.id,
-        notes: 'Restore stok otomatis karena order expired unpaid',
-      });
+    if (!order || order.status !== 'pending_payment') return false;
+    if (order.paymentMethod === 'credit') return false;
+    if (!order.expiresAt || order.expiresAt > new Date()) return false;
+
+    const transition = await tx.order.updateMany({
+      where: {
+        id: order.id,
+        status: 'pending_payment',
+      },
+      data: { status: 'expired_unpaid' },
+    });
+
+    if (transition.count === 0) {
+      return false;
     }
-  }
 
-  // Mark as expired
-  await prisma.order.update({
-    where: { id: orderId },
-    data: { status: 'expired_unpaid' },
+    await restoreOrderStock(tx, {
+      storeId: order.storeId,
+      orderId: order.id,
+      items: order.items,
+      notes: 'Restore stok otomatis karena order expired unpaid',
+    });
+
+    return true;
   });
-
-  return true;
 };
 
 // ─── Service ──────────────────────────────────────────────────────────────────
@@ -162,6 +162,7 @@ export const checkout = async (input: CheckoutInput) => {
     items, authenticatedCustomerId,
   } = input;
   const paymentMethod = resolvePaymentMethod(rawPaymentMethod);
+  const publicOrderId = generatePublicOrderId();
 
   // Validate store exists
   const store = await prisma.store.findUnique({
@@ -318,6 +319,7 @@ export const checkout = async (input: CheckoutInput) => {
       category: 'sale',
       balanceAfter: updatedVariant.stock,
       referenceType: 'checkout',
+      referenceId: publicOrderId,
       notes: 'Pengurangan stok dari proses checkout',
     });
 
@@ -390,7 +392,7 @@ export const checkout = async (input: CheckoutInput) => {
     data: {
       storeId,
       customerId: customer.id,
-      publicOrderId: generatePublicOrderId(),
+      publicOrderId,
       status: initialStatus,
       paymentMethod,
       customerName: customerName || customer.name || customerPhone,
