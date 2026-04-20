@@ -50,6 +50,7 @@ export const listCustomers = async (params: ListCustomersParams) => {
         name: true,
         phone: true,
         email: true,
+        type: true,
         isActive: true,
         createdAt: true,
       },

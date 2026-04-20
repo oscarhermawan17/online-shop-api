@@ -12,6 +12,7 @@ router.use(requireAuth);
 router.use(requireRole('staff'));
 
 // ─── Dashboard Routes ─────────────────────────────────────────────────────────
+router.get('/export/sales', dashboardController.exportSalesReport);
 router.get('/', dashboardController.getDashboardData);
 
 export default router;

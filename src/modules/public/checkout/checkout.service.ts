@@ -1,8 +1,9 @@
-import { PaymentMethod } from '@prisma/client';
+import { PaymentMethod, Prisma } from '@prisma/client';
 
 import prisma from '../../../config/prisma';
 import { AppError } from '../../../middlewares/error.middleware';
 import { CREDIT_EXCLUDED_STATUSES, getPaidCreditAmount, getRemainingCreditAmount } from '../../../utils/credit';
+import { resolveVariantDiscount } from '../../../utils/variant-discount';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -37,6 +38,18 @@ const formatRupiah = (amount: number): string =>
     minimumFractionDigits: 0,
     maximumFractionDigits: 0,
   }).format(amount);
+
+const ORDER_ITEM_SNAPSHOT_FIELDS = ['originalPrice', 'discountAmount', 'discountRuleName'] as const;
+
+const supportsOrderItemDiscountSnapshot = (() => {
+  const orderItemModel = Prisma.dmmf.datamodel.models.find((model) => model.name === 'OrderItem');
+  if (!orderItemModel) {
+    return false;
+  }
+
+  const fieldNames = new Set(orderItemModel.fields.map((field) => field.name));
+  return ORDER_ITEM_SNAPSHOT_FIELDS.every((field) => fieldNames.has(field));
+})();
 
 // ─── Helper: Generate public order ID ─────────────────────────────────────────
 
@@ -194,7 +207,10 @@ export const checkout = async (input: CheckoutInput) => {
     variantId: string | null;
     productName: string;
     variantDescription: string | null;
+    originalPrice: number;
     price: number;
+    discountAmount: number;
+    discountRuleName: string | null;
     quantity: number;
   }[] = [];
 
@@ -202,11 +218,18 @@ export const checkout = async (input: CheckoutInput) => {
     const product = await prisma.product.findUnique({
       where: { id: item.productId },
       include: {
-        discount: true,
         variants: {
           include: {
             optionValues: {
               include: { optionValue: { include: { option: true } } },
+            },
+            discountRules: {
+              where: { isActive: true },
+              orderBy: [
+                { priority: 'desc' },
+                { minThreshold: 'desc' },
+                { createdAt: 'asc' },
+              ],
             },
           },
         },
@@ -218,67 +241,62 @@ export const checkout = async (input: CheckoutInput) => {
     }
 
     if (product.storeId !== storeId) {
-      throw new AppError(`Product does not belong to this store`, 400);
+      throw new AppError('Product does not belong to this store', 400);
+    }
+
+    const variant = item.variantId
+      ? product.variants.find((v: (typeof product.variants)[number]) => v.id === item.variantId)
+      : (product.variants.find((v: (typeof product.variants)[number]) => v.isDefault) || product.variants[0]);
+
+    if (!variant) {
+      throw new AppError(`Variant not found for product: ${item.productId}`, 404);
+    }
+
+    if (variant.stock < item.quantity) {
+      throw new AppError(
+        `Insufficient stock for variant: ${variant.id}`,
+        400,
+      );
     }
 
     const isWholesale = isWholesaleCustomer;
-    const discount = product.discount;
+    const retailPrice = variant.priceOverride ?? product.basePrice;
+    const wholesalePrice = variant.wholesalePriceOverride ?? product.wholesalePrice ?? retailPrice;
+    const rawUnitPrice = isWholesale ? wholesalePrice : retailPrice;
 
-    const applyDiscount = (p: number, pct: number | null | undefined) =>
-      pct ? Math.round(p * (1 - pct / 100)) : p;
+    const pricing = resolveVariantDiscount(variant.discountRules, {
+      quantity: item.quantity,
+      unitPrice: rawUnitPrice,
+      customerType: customer.type,
+    });
 
-    let price = isWholesale
-      ? applyDiscount(product.wholesalePrice ?? product.basePrice, discount?.retailDiscountActive ? discount.retailDiscount : null)
-      : applyDiscount(product.basePrice, discount?.normalDiscountActive ? discount.normalDiscount : null);
-
-    let variantDescription: string | null = null;
-
-    if (item.variantId) {
-      const variant = product.variants.find(
-        (v: (typeof product.variants)[number]) => v.id === item.variantId,
-      );
-      if (!variant) {
-        throw new AppError(`Variant not found: ${item.variantId}`, 404);
-      }
-
-      if (variant.stock < item.quantity) {
-        throw new AppError(
-          `Insufficient stock for variant: ${item.variantId}`,
-          400,
-        );
-      }
-
-      const retailPrice = variant.priceOverride ?? product.basePrice;
-      const wholesalePrice = variant.wholesalePriceOverride ?? product.wholesalePrice ?? retailPrice;
-      const rawPrice = isWholesale ? wholesalePrice : retailPrice;
-      price = isWholesale
-        ? applyDiscount(rawPrice, discount?.retailDiscountActive ? discount.retailDiscount : null)
-        : applyDiscount(rawPrice, discount?.normalDiscountActive ? discount.normalDiscount : null);
-
-      // Build variant description
-      variantDescription = variant.optionValues
+    // Build variant description from selected option values
+    const variantDescription = variant.optionValues.length > 0
+      ? variant.optionValues
         .map(
           (ov: (typeof variant.optionValues)[number]) =>
             `${ov.optionValue.option.name}: ${ov.optionValue.value}`,
         )
-        .join(', ');
+        .join(', ')
+      : null;
 
-      // Reduce stock
-      await prisma.variant.update({
-        where: { id: item.variantId },
-        data: { stock: { decrement: item.quantity } },
-      });
-    }
+    await prisma.variant.update({
+      where: { id: variant.id },
+      data: { stock: { decrement: item.quantity } },
+    });
 
     orderItems.push({
-      variantId: item.variantId ?? null,
+      variantId: variant.id,
       productName: product.name,
       variantDescription,
-      price,
+      originalPrice: rawUnitPrice,
+      price: pricing.effectiveUnitPrice,
+      discountAmount: pricing.lineDiscount,
+      discountRuleName: pricing.rule?.name ?? null,
       quantity: item.quantity,
     });
 
-    totalAmount += price * item.quantity;
+    totalAmount += pricing.effectiveLineTotal;
   }
 
   const isDelivery = deliveryMethod === 'delivery';
@@ -349,7 +367,23 @@ export const checkout = async (input: CheckoutInput) => {
       creditSettledAt: null,
       expiresAt,
       items: {
-        createMany: { data: orderItems.map((item) => ({ ...item, storeId })) },
+        createMany: {
+          data: orderItems.map((item) => ({
+            variantId: item.variantId,
+            productName: item.productName,
+            variantDescription: item.variantDescription,
+            price: item.price,
+            quantity: item.quantity,
+            storeId,
+            ...(supportsOrderItemDiscountSnapshot
+              ? {
+                originalPrice: item.originalPrice,
+                discountAmount: item.discountAmount,
+                discountRuleName: item.discountRuleName,
+              }
+              : {}),
+          })),
+        },
       },
     },
     include: {
