@@ -19,14 +19,28 @@ const adminOrderInclude = {
 
 // ─── Service ──────────────────────────────────────────────────────────────────
 
-export const listOrders = async (
-  storeId: string,
-  status?: OrderStatus,
-) => {
+export interface ListOrdersInput {
+  storeId: string;
+  status?: OrderStatus;
+  startDate?: Date;
+  endDateExclusive?: Date;
+}
+
+export const listOrders = async (input: ListOrdersInput) => {
+  const { storeId, status, startDate, endDateExclusive } = input;
+
   const orders = await prisma.order.findMany({
     where: {
       storeId,
       ...(status && { status }),
+      ...(startDate || endDateExclusive
+        ? {
+            createdAt: {
+              ...(startDate ? { gte: startDate } : {}),
+              ...(endDateExclusive ? { lt: endDateExclusive } : {}),
+            },
+          }
+        : {}),
     },
     include: adminOrderInclude,
     orderBy: { createdAt: 'desc' },

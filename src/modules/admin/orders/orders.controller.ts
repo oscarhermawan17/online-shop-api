@@ -2,8 +2,64 @@ import { Response, NextFunction } from 'express';
 import { OrderStatus } from '@prisma/client';
 
 import { AuthRequest } from '../../../middlewares/auth.middleware';
+import { AppError } from '../../../middlewares/error.middleware';
 import { sendSuccess } from '../../../utils/response';
 import * as ordersService from './orders.service';
+
+const readQueryString = (value: unknown): string | undefined => {
+  if (typeof value === 'string') {
+    return value;
+  }
+
+  if (Array.isArray(value) && typeof value[0] === 'string') {
+    return value[0];
+  }
+
+  return undefined;
+};
+
+const parseDateQuery = (value: unknown, fieldName: string): Date | undefined => {
+  const raw = readQueryString(value);
+
+  if (!raw) {
+    return undefined;
+  }
+
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(raw)) {
+    throw new AppError(`Format ${fieldName} harus YYYY-MM-DD`, 400);
+  }
+
+  const parsed = new Date(`${raw}T00:00:00.000Z`);
+  if (Number.isNaN(parsed.getTime())) {
+    throw new AppError(`${fieldName} tidak valid`, 400);
+  }
+
+  return parsed;
+};
+
+const parseOrderStatusQuery = (value: unknown): OrderStatus | undefined => {
+  const raw = readQueryString(value);
+
+  if (!raw || raw === 'all') {
+    return undefined;
+  }
+
+  const allowedStatuses: OrderStatus[] = [
+    'pending_payment',
+    'waiting_confirmation',
+    'paid',
+    'shipped',
+    'done',
+    'expired_unpaid',
+    'cancelled',
+  ];
+
+  if (!allowedStatuses.includes(raw as OrderStatus)) {
+    throw new AppError('Status order tidak valid', 400);
+  }
+
+  return raw as OrderStatus;
+};
 
 // ─── GET /admin/orders ────────────────────────────────────────────────────────
 
@@ -13,8 +69,24 @@ export const listOrders = async (
   next: NextFunction,
 ): Promise<void> => {
   try {
-    const status = req.query.status as OrderStatus | undefined;
-    const orders = await ordersService.listOrders(req.user!.storeId, status);
+    const status = parseOrderStatusQuery(req.query.status);
+    const startDate = parseDateQuery(req.query.startDate, 'startDate');
+    const endDate = parseDateQuery(req.query.endDate, 'endDate');
+
+    if (startDate && endDate && endDate < startDate) {
+      throw new AppError('endDate harus sama atau setelah startDate', 400);
+    }
+
+    const endDateExclusive = endDate
+      ? new Date(endDate.getTime() + (24 * 60 * 60 * 1000))
+      : undefined;
+
+    const orders = await ordersService.listOrders({
+      storeId: req.user!.storeId,
+      status,
+      startDate,
+      endDateExclusive,
+    });
     sendSuccess(res, orders, 'Orders fetched successfully');
   } catch (error) {
     next(error);
