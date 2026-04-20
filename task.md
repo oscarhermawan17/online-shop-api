@@ -10,7 +10,7 @@
 
 | #   | Task                            | Description                                                                                                                 | SP  | Status |
 | --- | ------------------------------- | --------------------------------------------------------------------------------------------------------------------------- | --- | ------ |
-| 1.1 | Ritel customer registration     | Admin creates ritel customer accounts; ritel gets wholesale price, guest gets base price; admin can enable/disable accounts | 3   | Done   |
+| 1.1 | Ritel customer registration     | Admin creates ritel customer accounts; ritel gets wholesale price, guest gets base price; admin can enable/disable accounts; admin can change type (base↔wholesale) via PATCH /:id/type | 3   | Done   |
 | 1.2 | ~~Store customer registration~~ | ~~Removed — no B2B distinction. All customers are either guest or ritel.~~                                                  | -   | N/A    |
 | 1.3 | Customer type pricing logic     | Guest → basePrice, Ritel (logged-in) → wholesalePrice. Applied at checkout and product listing.                             | 3   | Done   |
 | 1.4 | Credit eligibility system       | Require 3 successful cash transactions before credit is available; admin can manually override                              | 8   | Todo   |
@@ -76,6 +76,14 @@
 | #   | Task                       | Description                                                                                       | SP  | Status |
 | --- | -------------------------- | ------------------------------------------------------------------------------------------------- | --- | ------ |
 | 7.1 | Real-time stock visibility | Display warehouse stock in real-time (refreshed within 24h); visible to customers during ordering | 5   | Done   |
+
+---
+
+## Epic 8: Dashboard & Reporting
+
+| #   | Task                | Description                                                                                                                                 | SP  | Status |
+| --- | ------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- | --- | ------ |
+| 8.1 | Sales dashboard     | GET /api/admin/dashboard; period filter (today/yesterday/this_month/last_month/custom); totalSales, totalOrders, newCustomers + growth % vs prev period; sales trend chart (hourly/daily); item rankings by qty and value | 5   | Done   |
 
 ---
 
