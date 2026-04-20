@@ -7,6 +7,10 @@ import {
 
 import prisma from '../../../config/prisma';
 import { AppError } from '../../../middlewares/error.middleware';
+import {
+  ensureInitialStockEditable,
+  upsertInitialStockMovement,
+} from '../../../utils/stock-ledger';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -277,7 +281,11 @@ export const getProduct = async (storeId: string, productId: string) => {
   return withStock(product);
 };
 
-export const createProduct = async (storeId: string, data: CreateProductInput) => {
+export const createProduct = async (
+  storeId: string,
+  data: CreateProductInput,
+  createdByAdminId?: string,
+) => {
   const normalizedVariants = data.variants?.map((variant) => ({
     name: variant.name?.trim() || null,
     imageUrl: variant.imageUrl ?? null,
@@ -290,99 +298,190 @@ export const createProduct = async (storeId: string, data: CreateProductInput) =
     const [baseVariant] = normalizedVariants;
     const baselineWholesalePrice = baseVariant.wholesalePrice ?? baseVariant.basePrice;
 
-    const product = await prisma.product.create({
+    const createdProduct = await prisma.$transaction(async (tx) => {
+      const product = await tx.product.create({
+        data: {
+          storeId,
+          name: data.name,
+          description: data.description,
+          categories: data.categoryIds ? { connect: data.categoryIds.map((id) => ({ id })) } : undefined,
+          unitId: data.unitId ?? null,
+          basePrice: baseVariant.basePrice,
+          wholesalePrice:
+            baselineWholesalePrice === baseVariant.basePrice ? null : baselineWholesalePrice,
+          variants: {
+            create: normalizedVariants.map((variant) => ({
+              storeId,
+              name: variant.name,
+              imageUrl: variant.imageUrl,
+              isDefault: false,
+              priceOverride:
+                variant.basePrice === baseVariant.basePrice ? null : variant.basePrice,
+              wholesalePriceOverride:
+                (variant.wholesalePrice ?? variant.basePrice) === baselineWholesalePrice
+                  ? null
+                  : (variant.wholesalePrice ?? variant.basePrice),
+              stock: variant.stock,
+            })),
+          },
+        },
+        select: {
+          id: true,
+          variants: {
+            select: {
+              id: true,
+              productId: true,
+              stock: true,
+            },
+          },
+        },
+      });
+
+      await Promise.all(
+        product.variants.map((variant) =>
+          upsertInitialStockMovement(tx, {
+            storeId,
+            productId: product.id,
+            variantId: variant.id,
+            quantity: variant.stock,
+            createdByAdminId,
+          })),
+      );
+
+      return product;
+    });
+
+    return getProduct(storeId, createdProduct.id);
+  }
+
+  if (data.basePrice === undefined || data.stock === undefined) {
+    throw new AppError('basePrice and stock are required when variants are not provided', 400);
+  }
+  const basePrice = data.basePrice;
+  const initialStock = data.stock;
+
+  const createdProduct = await prisma.$transaction(async (tx) => {
+    const product = await tx.product.create({
       data: {
         storeId,
         name: data.name,
         description: data.description,
         categories: data.categoryIds ? { connect: data.categoryIds.map((id) => ({ id })) } : undefined,
         unitId: data.unitId ?? null,
-        basePrice: baseVariant.basePrice,
-        wholesalePrice:
-          baselineWholesalePrice === baseVariant.basePrice ? null : baselineWholesalePrice,
+        basePrice,
+        wholesalePrice: data.wholesalePrice,
         variants: {
-          create: normalizedVariants.map((variant) => ({
+          create: {
             storeId,
-            name: variant.name,
-            imageUrl: variant.imageUrl,
-            isDefault: false,
-            priceOverride:
-              variant.basePrice === baseVariant.basePrice ? null : variant.basePrice,
-            wholesalePriceOverride:
-              (variant.wholesalePrice ?? variant.basePrice) === baselineWholesalePrice
-                ? null
-                : (variant.wholesalePrice ?? variant.basePrice),
-            stock: variant.stock,
-          })),
+            isDefault: true,
+            stock: initialStock,
+          },
         },
       },
-      include: productInclude,
+      select: {
+        id: true,
+      },
     });
 
-    return withStock(product);
-  }
-
-  if (data.basePrice === undefined || data.stock === undefined) {
-    throw new AppError('basePrice and stock are required when variants are not provided', 400);
-  }
-
-  const product = await prisma.product.create({
-    data: {
-      storeId,
-      name: data.name,
-      description: data.description,
-      categories: data.categoryIds ? { connect: data.categoryIds.map((id) => ({ id })) } : undefined,
-      unitId: data.unitId ?? null,
-      basePrice: data.basePrice,
-      wholesalePrice: data.wholesalePrice,
-      variants: {
-        create: {
-          storeId,
-          isDefault: true,
-          stock: data.stock,
-        },
+    const defaultVariant = await tx.variant.findFirst({
+      where: {
+        productId: product.id,
+        storeId,
+        isDefault: true,
       },
-    },
-    include: productInclude,
+      select: {
+        id: true,
+        stock: true,
+      },
+    });
+    if (defaultVariant) {
+      await upsertInitialStockMovement(tx, {
+        storeId,
+        productId: product.id,
+        variantId: defaultVariant.id,
+        quantity: defaultVariant.stock,
+        createdByAdminId,
+      });
+    }
+
+    return product;
   });
-  return withStock(product);
+
+  return getProduct(storeId, createdProduct.id);
 };
 
 export const updateProduct = async (
   storeId: string,
   productId: string,
   data: UpdateProductInput,
+  updatedByAdminId?: string,
 ) => {
   await getProduct(storeId, productId);
 
   const { stock, categoryIds, ...productData } = data;
 
-  await prisma.product.update({
-    where: { id: productId },
-    data: {
-      ...productData,
-      ...(categoryIds !== undefined
-        ? { categories: { set: categoryIds.map((id) => ({ id })) } }
-        : {}),
-    },
-  });
-
-  if (stock !== undefined) {
-    const defaultVariant = await prisma.variant.findFirst({
-      where: { productId, isDefault: true },
+  await prisma.$transaction(async (tx) => {
+    await tx.product.update({
+      where: { id: productId },
+      data: {
+        ...productData,
+        ...(categoryIds !== undefined
+          ? { categories: { set: categoryIds.map((id) => ({ id })) } }
+          : {}),
+      },
     });
 
-    if (defaultVariant) {
-      await prisma.variant.update({
-        where: { id: defaultVariant.id },
-        data: { stock },
+    if (stock !== undefined) {
+      const hasRealVariants = (await tx.variant.count({
+        where: {
+          productId,
+          storeId,
+          isDefault: false,
+        },
+      })) > 0;
+
+      if (hasRealVariants) {
+        return;
+      }
+
+      const defaultVariant = await tx.variant.findFirst({
+        where: { productId, storeId, isDefault: true },
+        select: { id: true, stock: true },
       });
-    } else {
-      await prisma.variant.create({
-        data: { storeId, productId, isDefault: true, stock },
-      });
+
+      if (defaultVariant) {
+        if (defaultVariant.stock !== stock) {
+          await ensureInitialStockEditable(tx, storeId, defaultVariant.id);
+        }
+
+        await tx.variant.update({
+          where: { id: defaultVariant.id },
+          data: { stock },
+        });
+
+        await upsertInitialStockMovement(tx, {
+          storeId,
+          productId,
+          variantId: defaultVariant.id,
+          quantity: stock,
+          createdByAdminId: updatedByAdminId,
+        });
+      } else {
+        const createdVariant = await tx.variant.create({
+          data: { storeId, productId, isDefault: true, stock },
+          select: { id: true },
+        });
+
+        await upsertInitialStockMovement(tx, {
+          storeId,
+          productId,
+          variantId: createdVariant.id,
+          quantity: stock,
+          createdByAdminId: updatedByAdminId,
+        });
+      }
     }
-  }
+  });
 
   return getProduct(storeId, productId);
 };
@@ -476,30 +575,43 @@ export const addProductVariant = async (
   storeId: string,
   productId: string,
   data: CreateVariantInput,
+  createdByAdminId?: string,
 ) => {
   await getProduct(storeId, productId);
 
-  return prisma.variant.create({
-    data: {
+  return prisma.$transaction(async (tx) => {
+    const variant = await tx.variant.create({
+      data: {
+        storeId,
+        productId,
+        name: data.name,
+        imageUrl: data.imageUrl ?? null,
+        priceOverride: data.priceOverride,
+        wholesalePriceOverride: data.wholesalePriceOverride,
+        stock: data.stock,
+        isDefault: false,
+        ...(data.optionValueIds?.length
+          ? {
+              optionValues: {
+                createMany: {
+                  data: data.optionValueIds.map((optionValueId) => ({ optionValueId })),
+                },
+              },
+            }
+          : {}),
+      },
+      include: variantInclude,
+    });
+
+    await upsertInitialStockMovement(tx, {
       storeId,
       productId,
-      name: data.name,
-      imageUrl: data.imageUrl ?? null,
-      priceOverride: data.priceOverride,
-      wholesalePriceOverride: data.wholesalePriceOverride,
-      stock: data.stock,
-      isDefault: false,
-      ...(data.optionValueIds?.length
-        ? {
-            optionValues: {
-              createMany: {
-                data: data.optionValueIds.map((optionValueId) => ({ optionValueId })),
-              },
-            },
-          }
-        : {}),
-    },
-    include: variantInclude,
+      variantId: variant.id,
+      quantity: variant.stock,
+      createdByAdminId,
+    });
+
+    return variant;
   });
 };
 
@@ -514,21 +626,41 @@ export const updateProductVariant = async (
     wholesalePriceOverride?: number | null;
     stock?: number;
   },
+  updatedByAdminId?: string,
 ) => {
   await getProduct(storeId, productId);
 
-  const variant = await prisma.variant.findFirst({
-    where: { id: variantId, productId },
-  });
+  return prisma.$transaction(async (tx) => {
+    const variant = await tx.variant.findFirst({
+      where: { id: variantId, productId, storeId },
+      select: { id: true, stock: true },
+    });
 
-  if (!variant) {
-    throw new AppError('Variant not found', 404);
-  }
+    if (!variant) {
+      throw new AppError('Variant not found', 404);
+    }
 
-  return prisma.variant.update({
-    where: { id: variantId },
-    data,
-    include: variantInclude,
+    if (data.stock !== undefined && data.stock !== variant.stock) {
+      await ensureInitialStockEditable(tx, storeId, variantId);
+    }
+
+    const updatedVariant = await tx.variant.update({
+      where: { id: variantId },
+      data,
+      include: variantInclude,
+    });
+
+    if (data.stock !== undefined) {
+      await upsertInitialStockMovement(tx, {
+        storeId,
+        productId,
+        variantId,
+        quantity: data.stock,
+        createdByAdminId: updatedByAdminId,
+      });
+    }
+
+    return updatedVariant;
   });
 };
 

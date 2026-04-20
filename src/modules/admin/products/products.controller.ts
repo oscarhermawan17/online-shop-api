@@ -259,7 +259,11 @@ export const createProduct = async (
   next: NextFunction,
 ): Promise<void> => {
   try {
-    const product = await productsService.createProduct(req.user!.storeId, req.body);
+    const product = await productsService.createProduct(
+      req.user!.storeId,
+      req.body,
+      req.user!.adminId,
+    );
     sendSuccess(res, product, 'Product created successfully', 201);
   } catch (error) {
     next(error);
@@ -278,6 +282,7 @@ export const updateProduct = async (
       req.user!.storeId,
       req.params.id as string,
       req.body,
+      req.user!.adminId,
     );
     sendSuccess(res, product, 'Product updated successfully');
   } catch (error) {
@@ -388,6 +393,7 @@ export const addProductVariant = async (
       req.user!.storeId,
       req.params.id as string,
       req.body,
+      req.user!.adminId,
     );
     sendSuccess(res, variant, 'Variant added successfully', 201);
   } catch (error) {
@@ -408,6 +414,7 @@ export const updateProductVariant = async (
       req.params.id as string,
       req.params.variantId as string,
       req.body,
+      req.user!.adminId,
     );
     sendSuccess(res, variant, 'Variant updated successfully');
   } catch (error) {

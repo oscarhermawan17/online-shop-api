@@ -3,6 +3,7 @@ import { PaymentMethod, Prisma } from '@prisma/client';
 import prisma from '../../../config/prisma';
 import { AppError } from '../../../middlewares/error.middleware';
 import { CREDIT_EXCLUDED_STATUSES, getPaidCreditAmount, getRemainingCreditAmount } from '../../../utils/credit';
+import { recordStockMovement } from '../../../utils/stock-ledger';
 import { resolveVariantDiscount } from '../../../utils/variant-discount';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -118,9 +119,27 @@ const expireOrderIfNeeded = async (orderId: string): Promise<boolean> => {
   // Restore stock for each item
   for (const item of order.items) {
     if (item.variantId) {
-      await prisma.variant.update({
+      const restoredVariant = await prisma.variant.update({
         where: { id: item.variantId },
         data: { stock: { increment: item.quantity } },
+        select: {
+          id: true,
+          productId: true,
+          stock: true,
+        },
+      });
+
+      await recordStockMovement(prisma, {
+        storeId: order.storeId,
+        productId: restoredVariant.productId,
+        variantId: restoredVariant.id,
+        stockStatus: 'in',
+        quantity: item.quantity,
+        category: 'restore',
+        balanceAfter: restoredVariant.stock,
+        referenceType: 'order',
+        referenceId: order.id,
+        notes: 'Restore stok otomatis karena order expired unpaid',
       });
     }
   }
@@ -280,9 +299,26 @@ export const checkout = async (input: CheckoutInput) => {
         .join(', ')
       : null;
 
-    await prisma.variant.update({
+    const updatedVariant = await prisma.variant.update({
       where: { id: variant.id },
       data: { stock: { decrement: item.quantity } },
+      select: {
+        id: true,
+        productId: true,
+        stock: true,
+      },
+    });
+
+    await recordStockMovement(prisma, {
+      storeId,
+      productId: updatedVariant.productId,
+      variantId: updatedVariant.id,
+      stockStatus: 'out',
+      quantity: item.quantity,
+      category: 'sale',
+      balanceAfter: updatedVariant.stock,
+      referenceType: 'checkout',
+      notes: 'Pengurangan stok dari proses checkout',
     });
 
     orderItems.push({
