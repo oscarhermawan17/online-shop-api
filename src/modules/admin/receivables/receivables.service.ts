@@ -66,20 +66,69 @@ const toReceivableResponse = (
   };
 };
 
-export const listReceivables = async (storeId: string) => {
-  const orders = await prisma.order.findMany({
-    where: {
-      storeId,
-      paymentMethod: 'credit',
-      status: {
-        notIn: CREDIT_EXCLUDED_STATUSES,
-      },
-    },
-    include: receivableInclude,
-    orderBy: { createdAt: 'desc' },
-  });
+export interface ListReceivablesInput {
+  storeId: string;
+  page?: number;
+  limit?: number;
+  settled?: 'settled' | 'unsettled';
+  startDate?: Date;
+  endDateExclusive?: Date;
+}
 
-  return orders.map(toReceivableResponse);
+export interface ListReceivablesResult {
+  receivables: ReturnType<typeof toReceivableResponse>[];
+  total: number;
+}
+
+export const listReceivables = async (input: ListReceivablesInput): Promise<ListReceivablesResult> => {
+  const {
+    storeId,
+    page,
+    limit,
+    settled,
+    startDate,
+    endDateExclusive,
+  } = input;
+
+  const shouldPaginate = Number.isInteger(page) && Number.isInteger(limit);
+
+  const where = {
+    storeId,
+    paymentMethod: 'credit' as const,
+    status: {
+      notIn: CREDIT_EXCLUDED_STATUSES,
+    },
+    ...(settled === 'settled' ? { creditSettledAt: { not: null } } : {}),
+    ...(settled === 'unsettled' ? { creditSettledAt: null } : {}),
+    ...(startDate || endDateExclusive
+      ? {
+          createdAt: {
+            ...(startDate ? { gte: startDate } : {}),
+            ...(endDateExclusive ? { lt: endDateExclusive } : {}),
+          },
+        }
+      : {}),
+  };
+
+  const [total, orders] = await Promise.all([
+    prisma.order.count({ where }),
+    prisma.order.findMany({
+      where,
+      include: receivableInclude,
+      orderBy: { createdAt: 'desc' },
+      ...(shouldPaginate
+        ? {
+            skip: ((page as number) - 1) * (limit as number),
+            take: limit as number,
+          }
+        : {}),
+    }),
+  ]);
+
+  return {
+    receivables: orders.map(toReceivableResponse),
+    total,
+  };
 };
 
 export interface AddReceivablePaymentInput {
