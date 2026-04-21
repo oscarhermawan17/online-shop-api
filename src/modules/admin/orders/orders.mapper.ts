@@ -4,13 +4,11 @@ import type {
   PaymentProof,
   ShippingShift,
   OrderShippingAssignment,
-  Customer,
 } from '@prisma/client';
 
 type OrderWithRelations = Order & {
   items: OrderItem[];
   paymentProof: PaymentProof | null;
-  customer: Customer;
   shippingAssignment?: (OrderShippingAssignment & {
     shift: ShippingShift;
   }) | null;

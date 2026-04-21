@@ -7,7 +7,6 @@ import { restoreOrderStock } from '../../../utils/order-stock';
 import { toAdminOrderResponse } from './orders.mapper';
 
 const adminOrderInclude = {
-  customer: true,
   items: true,
   paymentProof: true,
   shippingAssignment: {

@@ -1,6 +1,3 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
-
 generator client {
   provider = "prisma-client-js"
 }
@@ -8,8 +5,8 @@ generator client {
 generator erd {
   provider = "prisma-erd-generator"
   output   = "./ERD.svg"
+  disabled = "true"
   theme    = "default"
-  disabled = true
 }
 
 datasource db {
@@ -17,7 +14,6 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-// ─── Health Check ─────────────────────────────────────────────────────────────
 model HealthCheck {
   id        String   @id @default(uuid())
   status    String
@@ -26,7 +22,486 @@ model HealthCheck {
   @@map("health_checks")
 }
 
-// ─── Enums ────────────────────────────────────────────────────────────────────
+model Store {
+  id                                     String                    @id @default(uuid())
+  name                                   String
+  description                            String?
+  logoUrl                                String?
+  bannerUrl                              String?
+  footerText                             String?
+  whatsappNumber                         String?
+  email                                  String?
+  address                                String?
+  bankAccountName                        String?
+  bankAccountNumber                      String?
+  bankName                               String?
+  qrisImageUrl                           String?
+  createdAt                              DateTime                  @default(now())
+  updatedAt                              DateTime                  @updatedAt
+  deliveryRetailFreeShippingMinimumOrder Int?
+  deliveryRetailMinimumOrder             Int?
+  deliveryStoreFreeShippingMinimumOrder  Int?
+  deliveryStoreMinimumOrder              Int?
+  admins                                 Admin[]
+  carouselSlides                         CarouselSlide[]
+  categories                             Category[]
+  creditPayments                         CreditPayment[]
+  customerAddresses                      CustomerAddress[]
+  customerCredits                        CustomerCredit[]
+  customers                              Customer[]
+  orderItems                             OrderItem[]
+  shippingAssignments                    OrderShippingAssignment[]
+  orders                                 Order[]
+  paymentProofs                          PaymentProof[]
+  productDiscounts                       ProductDiscount[]
+  productImages                          ProductImage[]
+  productOptionValues                    ProductOptionValue[]
+  productOptions                         ProductOption[]
+  products                               Product[]
+  shippingDrivers                        ShippingDriver[]
+  shippingShifts                         ShippingShift[]
+  shippingZones                          ShippingZone[]
+  stockMovements                         StockMovement[]
+  units                                  Unit[]
+  variantDiscountRules                   VariantDiscountRule[]
+  variants                               Variant[]
+
+  @@map("stores")
+}
+
+model CarouselSlide {
+  id              String   @id @default(uuid())
+  storeId         String
+  title           String
+  subtitle        String?
+  badge           String?
+  imageUrl        String?
+  backgroundColor String?
+  isActive        Boolean  @default(true)
+  sortOrder       Int      @default(0)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  store           Store    @relation(fields: [storeId], references: [id], onDelete: Cascade)
+
+  @@index([storeId])
+  @@index([storeId, isActive, sortOrder])
+  @@map("carousel_slides")
+}
+
+model Product {
+  id             String           @id @default(uuid())
+  storeId        String
+  name           String
+  description    String?
+  basePrice      Int
+  wholesalePrice Int?
+  isActive       Boolean          @default(true)
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
+  unitId         String?
+  discount       ProductDiscount?
+  images         ProductImage[]
+  options        ProductOption[]
+  store          Store            @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  unit           Unit?            @relation(fields: [unitId], references: [id])
+  stockMovements StockMovement[]
+  variants       Variant[]
+  categories     Category[]       @relation("CategoryToProduct")
+
+  @@index([storeId])
+  @@map("products")
+}
+
+model ProductImage {
+  id        String   @id @default(uuid())
+  storeId   String
+  productId String
+  imageUrl  String
+  createdAt DateTime @default(now())
+  product   Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  store     Store    @relation(fields: [storeId], references: [id], onDelete: Cascade)
+
+  @@index([storeId])
+  @@map("product_images")
+}
+
+model ProductOption {
+  id        String               @id @default(uuid())
+  storeId   String
+  productId String
+  name      String
+  values    ProductOptionValue[]
+  product   Product              @relation(fields: [productId], references: [id], onDelete: Cascade)
+  store     Store                @relation(fields: [storeId], references: [id], onDelete: Cascade)
+
+  @@index([storeId])
+  @@map("product_options")
+}
+
+model ProductOptionValue {
+  id             String               @id @default(uuid())
+  storeId        String
+  optionId       String
+  value          String
+  option         ProductOption        @relation(fields: [optionId], references: [id], onDelete: Cascade)
+  store          Store                @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  variantOptions VariantOptionValue[]
+
+  @@index([storeId])
+  @@map("product_option_values")
+}
+
+model Variant {
+  id                     String                @id @default(uuid())
+  storeId                String
+  productId              String
+  name                   String?
+  isDefault              Boolean               @default(false)
+  priceOverride          Int?
+  wholesalePriceOverride Int?
+  stock                  Int                   @default(0)
+  createdAt              DateTime              @default(now())
+  imageUrl               String?
+  stockMovements         StockMovement[]
+  discountRules          VariantDiscountRule[]
+  optionValues           VariantOptionValue[]
+  product                Product               @relation(fields: [productId], references: [id], onDelete: Cascade)
+  store                  Store                 @relation(fields: [storeId], references: [id], onDelete: Cascade)
+
+  @@index([storeId])
+  @@map("variants")
+}
+
+model VariantOptionValue {
+  id            String             @id @default(uuid())
+  variantId     String
+  optionValueId String
+  optionValue   ProductOptionValue @relation(fields: [optionValueId], references: [id], onDelete: Cascade)
+  variant       Variant            @relation(fields: [variantId], references: [id], onDelete: Cascade)
+
+  @@unique([variantId, optionValueId])
+  @@map("variant_option_values")
+}
+
+model VariantDiscountRule {
+  id           String              @id @default(uuid())
+  storeId      String
+  variantId    String
+  name         String?
+  triggerType  DiscountTriggerType
+  minThreshold Int
+  maxThreshold Int?
+  valueType    DiscountValueType
+  value        Int
+  applyMode    DiscountApplyMode
+  customerType CustomerType?
+  isActive     Boolean             @default(true)
+  priority     Int                 @default(0)
+  createdAt    DateTime            @default(now())
+  updatedAt    DateTime            @updatedAt
+  store        Store               @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  variant      Variant             @relation(fields: [variantId], references: [id], onDelete: Cascade)
+
+  @@index([storeId])
+  @@index([variantId])
+  @@index([variantId, isActive])
+  @@index([variantId, customerType, isActive])
+  @@map("variant_discount_rules")
+}
+
+model Customer {
+  id        String            @id @default(uuid())
+  storeId   String
+  name      String?
+  phone     String
+  email     String?
+  password  String?
+  isActive  Boolean           @default(true)
+  createdAt DateTime          @default(now())
+  updatedAt DateTime          @default(now()) @updatedAt
+  type      CustomerType      @default(base)
+  avatarUrl String?
+  addresses CustomerAddress[]
+  credit    CustomerCredit?
+  store     Store             @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  orders    Order[]
+
+  @@unique([storeId, phone])
+  @@index([storeId])
+  @@map("customers")
+}
+
+model CustomerAddress {
+  id         String   @id @default(uuid())
+  storeId    String
+  customerId String
+  label      String
+  recipient  String
+  phone      String
+  address    String
+  district   String?
+  lat        Float?
+  lng        Float?
+  isDefault  Boolean  @default(false)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+  customer   Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  store      Store    @relation(fields: [storeId], references: [id], onDelete: Cascade)
+
+  @@index([storeId])
+  @@index([customerId])
+  @@map("customer_addresses")
+}
+
+model Order {
+  id                 String                   @id @default(uuid())
+  storeId            String
+  customerId         String
+  publicOrderId      String                   @unique
+  status             OrderStatus              @default(pending_payment)
+  customerName       String?
+  customerPhone      String?
+  customerAddress    String?
+  deliveryMethod     String?
+  notes              String?
+  shippingCost       Int                      @default(0)
+  totalAmount        Int
+  expiresAt          DateTime?
+  createdAt          DateTime                 @default(now())
+  updatedAt          DateTime                 @updatedAt
+  creditSettledAt    DateTime?
+  paymentMethod      PaymentMethod            @default(bank_transfer)
+  creditPayments     CreditPayment[]
+  items              OrderItem[]
+  shippingAssignment OrderShippingAssignment?
+  customer           Customer                 @relation(fields: [customerId], references: [id])
+  store              Store                    @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  paymentProof       PaymentProof?
+
+  @@index([storeId])
+  @@index([customerId])
+  @@map("orders")
+}
+
+model CustomerCredit {
+  id          String   @id @default(uuid())
+  storeId     String
+  customerId  String   @unique
+  creditLimit Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  customer    Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  store       Store    @relation(fields: [storeId], references: [id], onDelete: Cascade)
+
+  @@index([storeId])
+  @@map("customer_credits")
+}
+
+model CreditPayment {
+  id         String   @id @default(uuid())
+  storeId    String
+  orderId    String
+  amount     Int
+  receivedAt DateTime
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+  order      Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  store      Store    @relation(fields: [storeId], references: [id], onDelete: Cascade)
+
+  @@index([storeId])
+  @@index([orderId])
+  @@map("credit_payments")
+}
+
+model OrderItem {
+  id                 String  @id @default(uuid())
+  storeId            String
+  orderId            String
+  productName        String
+  variantDescription String?
+  price              Int
+  quantity           Int
+  variantId          String?
+  discountAmount     Int     @default(0)
+  discountRuleName   String?
+  originalPrice      Int?
+  order              Order   @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  store              Store   @relation(fields: [storeId], references: [id], onDelete: Cascade)
+
+  @@index([storeId])
+  @@map("order_items")
+}
+
+model PaymentProof {
+  id         String   @id @default(uuid())
+  storeId    String
+  orderId    String   @unique
+  imageUrl   String
+  uploadedAt DateTime @default(now())
+  order      Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  store      Store    @relation(fields: [storeId], references: [id], onDelete: Cascade)
+
+  @@index([storeId])
+  @@map("payment_proofs")
+}
+
+model ShippingZone {
+  id        String   @id @default(uuid())
+  storeId   String
+  name      String
+  cost      Int
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  store     Store    @relation(fields: [storeId], references: [id], onDelete: Cascade)
+
+  @@unique([storeId, name])
+  @@index([storeId])
+  @@map("shipping_zones")
+}
+
+model ShippingDriver {
+  id        String   @id @default(uuid())
+  storeId   String
+  name      String
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  store     Store    @relation(fields: [storeId], references: [id], onDelete: Cascade)
+
+  @@unique([storeId, name])
+  @@index([storeId])
+  @@index([storeId, isActive])
+  @@map("shipping_drivers")
+}
+
+model ShippingShift {
+  id          String                    @id @default(uuid())
+  storeId     String
+  name        String
+  startTime   String
+  endTime     String
+  isActive    Boolean                   @default(true)
+  sortOrder   Int?
+  createdAt   DateTime                  @default(now())
+  updatedAt   DateTime                  @updatedAt
+  assignments OrderShippingAssignment[]
+  store       Store                     @relation(fields: [storeId], references: [id], onDelete: Cascade)
+
+  @@unique([storeId, name, startTime, endTime])
+  @@index([storeId])
+  @@index([storeId, isActive])
+  @@map("shipping_shifts")
+}
+
+model OrderShippingAssignment {
+  id                String        @id @default(uuid())
+  storeId           String
+  orderId           String        @unique
+  shiftId           String
+  deliveryDate      DateTime
+  driverName        String
+  assignedAt        DateTime      @default(now())
+  assignedByAdminId String?
+  order             Order         @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  shift             ShippingShift @relation(fields: [shiftId], references: [id])
+  store             Store         @relation(fields: [storeId], references: [id], onDelete: Cascade)
+
+  @@index([storeId])
+  @@index([shiftId])
+  @@map("order_shipping_assignments")
+}
+
+model Admin {
+  id                    String          @id @default(uuid())
+  storeId               String
+  name                  String
+  phone                 String          @unique
+  email                 String?
+  password              String
+  role                  AdminRole       @default(owner)
+  createdAt             DateTime        @default(now())
+  updatedAt             DateTime        @updatedAt
+  store                 Store           @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  createdStockMovements StockMovement[] @relation("AdminStockMovements")
+
+  @@index([storeId])
+  @@map("admins")
+}
+
+model StockMovement {
+  id               String                @id @default(uuid())
+  storeId          String
+  productId        String
+  variantId        String
+  stockStatus      StockMovementStatus
+  quantity         Int
+  category         StockMovementCategory
+  balanceAfter     Int
+  referenceType    String?
+  referenceId      String?
+  notes            String?
+  createdByAdminId String?
+  createdAt        DateTime              @default(now())
+  createdByAdmin   Admin?                @relation("AdminStockMovements", fields: [createdByAdminId], references: [id])
+  product          Product               @relation(fields: [productId], references: [id], onDelete: Cascade)
+  store            Store                 @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  variant          Variant               @relation(fields: [variantId], references: [id], onDelete: Cascade)
+
+  @@index([storeId])
+  @@index([productId])
+  @@index([variantId])
+  @@index([storeId, createdAt])
+  @@index([storeId, productId, createdAt])
+  @@index([storeId, variantId, createdAt])
+  @@map("stock_movements")
+}
+
+model ProductDiscount {
+  id                   String    @id @default(uuid())
+  storeId              String
+  productId            String    @unique
+  normalDiscount       Int?
+  normalDiscountActive Boolean   @default(false)
+  retailDiscount       Int?
+  retailDiscountActive Boolean   @default(false)
+  startDate            DateTime?
+  endDate              DateTime?
+  createdAt            DateTime  @default(now())
+  updatedAt            DateTime  @updatedAt
+  product              Product   @relation(fields: [productId], references: [id], onDelete: Cascade)
+  store                Store     @relation(fields: [storeId], references: [id], onDelete: Cascade)
+
+  @@index([storeId])
+  @@map("product_discounts")
+}
+
+model Category {
+  id        String    @id @default(uuid())
+  storeId   String
+  name      String
+  icon      String?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  store     Store     @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  products  Product[] @relation("CategoryToProduct")
+
+  @@index([storeId])
+  @@map("categories")
+}
+
+model Unit {
+  id        String    @id @default(uuid())
+  storeId   String
+  name      String
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  products  Product[]
+  store     Store     @relation(fields: [storeId], references: [id], onDelete: Cascade)
+
+  @@index([storeId])
+  @@map("units")
+}
 
 enum OrderStatus {
   pending_payment
@@ -79,582 +554,4 @@ enum StockMovementCategory {
   add_stock
   sale
   restore
-}
-
-// ─── Store ────────────────────────────────────────────────────────────────────
-// Represents a tenant store profile. Each deployment typically maps
-// to one Store row via DATABASE_URL.
-
-model Store {
-  id                 String   @id @default(uuid())
-  name               String
-  description        String?
-  logoUrl            String?
-  bannerUrl          String?
-  footerText         String?
-  whatsappNumber     String?
-  email              String?
-  address            String?
-  bankAccountName    String?
-  bankAccountNumber  String?
-  bankName           String?
-  qrisImageUrl       String?
-  deliveryRetailMinimumOrder             Int?
-  deliveryStoreMinimumOrder              Int?
-  deliveryRetailFreeShippingMinimumOrder Int?
-  deliveryStoreFreeShippingMinimumOrder  Int?
-  createdAt          DateTime @default(now())
-  updatedAt          DateTime @updatedAt
-
-  // Relations
-  products           Product[]
-  categories         Category[]
-  units              Unit[]
-  orders             Order[]
-  admins             Admin[]
-  customers          Customer[]
-  customerAddresses  CustomerAddress[]
-  productImages      ProductImage[]
-  productOptions     ProductOption[]
-  productOptionValues ProductOptionValue[]
-  variants           Variant[]
-  orderItems         OrderItem[]
-  paymentProofs      PaymentProof[]
-  creditPayments     CreditPayment[]
-  shippingZones      ShippingZone[]
-  shippingDrivers    ShippingDriver[]
-  shippingShifts     ShippingShift[]
-  shippingAssignments OrderShippingAssignment[]
-  customerCredits    CustomerCredit[]
-  productDiscounts   ProductDiscount[]
-  variantDiscountRules VariantDiscountRule[]
-  carouselSlides     CarouselSlide[]
-  stockMovements     StockMovement[]
-
-  @@map("stores")
-}
-
-model CarouselSlide {
-  id              String   @id @default(uuid())
-  storeId         String
-  title           String
-  subtitle        String?
-  badge           String?
-  imageUrl        String?
-  backgroundColor String?
-  isActive        Boolean  @default(true)
-  sortOrder       Int      @default(0)
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
-
-  store Store @relation(fields: [storeId], references: [id], onDelete: Cascade)
-
-  @@index([storeId])
-  @@index([storeId, isActive, sortOrder])
-  @@map("carousel_slides")
-}
-
-// ─── Product ──────────────────────────────────────────────────────────────────
-
-model Product {
-  id          String   @id @default(uuid())
-  storeId     String
-  unitId      String?
-  name        String
-  description String?
-  basePrice      Int
-  wholesalePrice Int?     // null → same as basePrice (harga toko/customer login)
-  isActive       Boolean  @default(true)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-
-  // Relations
-  store      Store            @relation(fields: [storeId], references: [id], onDelete: Cascade)
-  categories Category[]
-  unit       Unit?            @relation(fields: [unitId], references: [id], onDelete: SetNull)
-  images     ProductImage[]
-  options    ProductOption[]
-  variants   Variant[]
-  discount   ProductDiscount?
-  stockMovements StockMovement[]
-
-  @@index([storeId])
-  @@map("products")
-}
-
-// ─── ProductImage (Gallery) ───────────────────────────────────────────────────
-
-model ProductImage {
-  id        String   @id @default(uuid())
-  storeId   String
-  productId String
-  imageUrl  String
-  createdAt DateTime @default(now())
-
-  // Relations
-  store   Store   @relation(fields: [storeId], references: [id], onDelete: Cascade)
-  product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
-
-  @@index([storeId])
-  @@map("product_images")
-}
-
-// ─── ProductOption ────────────────────────────────────────────────────────────
-// Defines structured option types per product, e.g. "Color", "Size".
-
-model ProductOption {
-  id        String @id @default(uuid())
-  storeId   String
-  productId String
-  name      String // e.g. "Color", "Size"
-
-  // Relations
-  store   Store                @relation(fields: [storeId], references: [id], onDelete: Cascade)
-  product Product              @relation(fields: [productId], references: [id], onDelete: Cascade)
-  values  ProductOptionValue[]
-
-  @@index([storeId])
-  @@map("product_options")
-}
-
-// ─── ProductOptionValue ───────────────────────────────────────────────────────
-// Individual option values, e.g. "Black", "White", "39", "40".
-
-model ProductOptionValue {
-  id       String @id @default(uuid())
-  storeId  String
-  optionId String
-  value    String // e.g. "Black", "39"
-
-  // Relations
-  store          Store                @relation(fields: [storeId], references: [id], onDelete: Cascade)
-  option         ProductOption        @relation(fields: [optionId], references: [id], onDelete: Cascade)
-  variantOptions VariantOptionValue[]
-
-  @@index([storeId])
-  @@map("product_option_values")
-}
-
-// ─── Variant ──────────────────────────────────────────────────────────────────
-// Represents a specific sellable combination of option values.
-
-model Variant {
-  id            String   @id @default(uuid())
-  storeId       String
-  productId     String
-  name          String?
-  imageUrl      String?
-  isDefault     Boolean  @default(false)
-  priceOverride          Int?     // null → use product.basePrice
-  wholesalePriceOverride Int?     // null → use product.wholesalePrice
-  stock                  Int      @default(0)
-  createdAt     DateTime @default(now())
-
-  // Relations
-  store        Store                @relation(fields: [storeId], references: [id], onDelete: Cascade)
-  product      Product              @relation(fields: [productId], references: [id], onDelete: Cascade)
-  optionValues VariantOptionValue[]
-  discountRules VariantDiscountRule[]
-  stockMovements StockMovement[]
-
-  @@index([storeId])
-  @@map("variants")
-}
-
-// ─── VariantOptionValue ───────────────────────────────────────────────────────
-// Join table: links a Variant to the specific option values it represents.
-
-model VariantOptionValue {
-  id             String @id @default(uuid())
-  variantId      String
-  optionValueId  String
-
-  // Relations
-  variant     Variant            @relation(fields: [variantId], references: [id], onDelete: Cascade)
-  optionValue ProductOptionValue @relation(fields: [optionValueId], references: [id], onDelete: Cascade)
-
-  @@unique([variantId, optionValueId])
-  @@map("variant_option_values")
-}
-
-model VariantDiscountRule {
-  id           String              @id @default(uuid())
-  storeId      String
-  variantId    String
-  name         String?
-  triggerType  DiscountTriggerType
-  minThreshold Int
-  maxThreshold Int?
-  valueType    DiscountValueType
-  value        Int
-  applyMode    DiscountApplyMode
-  customerType CustomerType?
-  isActive     Boolean             @default(true)
-  priority     Int                 @default(0)
-  createdAt    DateTime            @default(now())
-  updatedAt    DateTime            @updatedAt
-
-  store   Store   @relation(fields: [storeId], references: [id], onDelete: Cascade)
-  variant Variant @relation(fields: [variantId], references: [id], onDelete: Cascade)
-
-  @@index([storeId])
-  @@index([variantId])
-  @@index([variantId, isActive])
-  @@index([variantId, customerType, isActive])
-  @@map("variant_discount_rules")
-}
-
-// ─── Customer ─────────────────────────────────────────────────────────────────
-// Store-scoped: each store has its own customer pool.
-// Same phone number can register independently at different stores.
-
-model Customer {
-  id        String   @id @default(uuid())
-  storeId   String
-  name      String?
-  phone     String
-  email     String?
-  avatarUrl String?
-  password  String?  // null = guest, non-null = registered
-  type      CustomerType @default(base)
-  isActive  Boolean  @default(true)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @default(now()) @updatedAt
-
-  // Relations
-  store     Store             @relation(fields: [storeId], references: [id], onDelete: Cascade)
-  orders    Order[]
-  addresses CustomerAddress[]
-  credit    CustomerCredit?
-
-  @@unique([storeId, phone])
-  @@index([storeId])
-  @@map("customers")
-}
-
-// ─── Customer Address ───────────────────────────────────────────────────────
-// Saved delivery addresses for a customer.
-
-model CustomerAddress {
-  id         String   @id @default(uuid())
-  storeId    String
-  customerId String
-  label      String   // e.g. "Rumah", "Kantor"
-  recipient  String   // recipient name
-  phone      String   // recipient phone
-  address    String   // full address text
-  district   String?  // kecamatan name (for shipping zone matching)
-  lat        Float?
-  lng        Float?
-  isDefault  Boolean  @default(false)
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
-
-  // Relations
-  store    Store    @relation(fields: [storeId], references: [id], onDelete: Cascade)
-  customer Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
-
-  @@index([storeId])
-  @@index([customerId])
-  @@map("customer_addresses")
-}
-
-// ─── Order ────────────────────────────────────────────────────────────────────
-
-model Order {
-  id              String      @id @default(uuid())
-  storeId         String
-  customerId      String
-  publicOrderId   String      @unique // human-readable order reference
-  status          OrderStatus @default(pending_payment)
-  paymentMethod   PaymentMethod @default(bank_transfer)
-  customerName    String?     // snapshot at order time
-  customerPhone   String?     // snapshot at order time
-  customerAddress String?     // delivery address or store address for pickup
-  deliveryMethod  String?     // 'pickup' | 'delivery'
-  notes           String?
-  shippingCost    Int         @default(0)
-  totalAmount     Int
-  creditSettledAt DateTime?
-  expiresAt       DateTime?
-  createdAt       DateTime    @default(now())
-  updatedAt       DateTime    @updatedAt
-
-  // Relations
-  store        Store         @relation(fields: [storeId], references: [id], onDelete: Cascade)
-  customer     Customer      @relation(fields: [customerId], references: [id])
-  items        OrderItem[]
-  paymentProof PaymentProof?
-  creditPayments CreditPayment[]
-  shippingAssignment OrderShippingAssignment?
-
-  @@index([storeId])
-  @@index([customerId])
-  @@map("orders")
-}
-
-model CustomerCredit {
-  id          String   @id @default(uuid())
-  storeId     String
-  customerId  String   @unique
-  creditLimit Int      @default(0)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-
-  store    Store    @relation(fields: [storeId], references: [id], onDelete: Cascade)
-  customer Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
-
-  @@index([storeId])
-  @@map("customer_credits")
-}
-
-model CreditPayment {
-  id         String   @id @default(uuid())
-  storeId    String
-  orderId    String
-  amount     Int
-  receivedAt DateTime
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
-
-  store Store @relation(fields: [storeId], references: [id], onDelete: Cascade)
-  order Order @relation(fields: [orderId], references: [id], onDelete: Cascade)
-
-  @@index([storeId])
-  @@index([orderId])
-  @@map("credit_payments")
-}
-
-// ─── OrderItem (Snapshot) ─────────────────────────────────────────────────────
-// Immutable snapshot of what was ordered. Decoupled from live product data
-// so historical orders remain accurate after product edits.
-
-model OrderItem {
-  id                 String  @id @default(uuid())
-  storeId            String
-  orderId            String
-  variantId          String? // kept for stock restoration on expiry/cancel
-  productName        String
-  variantDescription String?
-  originalPrice      Int?
-  price              Int
-  discountAmount     Int     @default(0)
-  discountRuleName   String?
-  quantity           Int
-
-  // Relations
-  store Store @relation(fields: [storeId], references: [id], onDelete: Cascade)
-  order Order @relation(fields: [orderId], references: [id], onDelete: Cascade)
-
-  @@index([storeId])
-  @@map("order_items")
-}
-
-// ─── PaymentProof ─────────────────────────────────────────────────────────────
-// Customer uploads payment confirmation image (manual payment flow).
-
-model PaymentProof {
-  id         String   @id @default(uuid())
-  storeId    String
-  orderId    String   @unique // one proof per order
-  imageUrl   String
-  uploadedAt DateTime @default(now())
-
-  // Relations
-  store Store @relation(fields: [storeId], references: [id], onDelete: Cascade)
-  order Order @relation(fields: [orderId], references: [id], onDelete: Cascade)
-
-  @@index([storeId])
-  @@map("payment_proofs")
-}
-
-// ─── Shipping Zone ──────────────────────────────────────────────────────────
-// District-level shipping cost configuration with GeoJSON geometry.
-
-model ShippingZone {
-  id        String   @id @default(uuid())
-  storeId   String
-  name      String   // kecamatan name
-  cost      Int      // shipping cost in Rupiah
-  isActive  Boolean  @default(true)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  store Store @relation(fields: [storeId], references: [id], onDelete: Cascade)
-
-  @@unique([storeId, name])
-  @@index([storeId])
-  @@map("shipping_zones")
-}
-
-// ─── Shipping Driver ──────────────────────────────────────────────────────────
-// Master list of drivers/couriers that admins can choose from in shipping flow.
-
-model ShippingDriver {
-  id        String   @id @default(uuid())
-  storeId   String
-  name      String
-  isActive  Boolean  @default(true)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  store Store @relation(fields: [storeId], references: [id], onDelete: Cascade)
-
-  @@unique([storeId, name])
-  @@index([storeId])
-  @@index([storeId, isActive])
-  @@map("shipping_drivers")
-}
-
-// ─── Shipping Shift ───────────────────────────────────────────────────────────
-// Reusable delivery shift templates used by admins when dispatching orders.
-
-model ShippingShift {
-  id        String   @id @default(uuid())
-  storeId   String
-  name      String
-  startTime String
-  endTime   String
-  isActive  Boolean  @default(true)
-  sortOrder Int?
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  store       Store                     @relation(fields: [storeId], references: [id], onDelete: Cascade)
-  assignments OrderShippingAssignment[]
-
-  @@unique([storeId, name, startTime, endTime])
-  @@index([storeId])
-  @@index([storeId, isActive])
-  @@map("shipping_shifts")
-}
-
-// ─── Order Shipping Assignment ───────────────────────────────────────────────
-// Captures the admin dispatch decision for a delivery order.
-
-model OrderShippingAssignment {
-  id                String   @id @default(uuid())
-  storeId           String
-  orderId           String   @unique
-  shiftId           String
-  deliveryDate      DateTime
-  driverName        String
-  assignedAt        DateTime @default(now())
-  assignedByAdminId String?
-
-  store Store         @relation(fields: [storeId], references: [id], onDelete: Cascade)
-  order Order         @relation(fields: [orderId], references: [id], onDelete: Cascade)
-  shift ShippingShift @relation(fields: [shiftId], references: [id])
-
-  @@index([storeId])
-  @@index([shiftId])
-  @@map("order_shipping_assignments")
-}
-
-// ─── Admin ────────────────────────────────────────────────────────────────────
-// Store admin accounts with role-based access control.
-
-model Admin {
-  id        String    @id @default(uuid())
-  storeId   String
-  name      String
-  phone     String    @unique
-  email     String?
-  password  String
-  role      AdminRole @default(owner)
-  createdAt DateTime  @default(now())
-  updatedAt DateTime  @updatedAt
-
-  store Store @relation(fields: [storeId], references: [id], onDelete: Cascade)
-  createdStockMovements StockMovement[] @relation("AdminStockMovements")
-
-  @@index([storeId])
-  @@map("admins")
-}
-
-model StockMovement {
-  id               String                @id @default(uuid())
-  storeId          String
-  productId        String
-  variantId        String
-  stockStatus      StockMovementStatus
-  quantity         Int
-  category         StockMovementCategory
-  balanceAfter     Int
-  referenceType    String?
-  referenceId      String?
-  notes            String?
-  createdByAdminId String?
-  createdAt        DateTime              @default(now())
-
-  store         Store   @relation(fields: [storeId], references: [id], onDelete: Cascade)
-  product       Product @relation(fields: [productId], references: [id], onDelete: Cascade)
-  variant       Variant @relation(fields: [variantId], references: [id], onDelete: Cascade)
-  createdByAdmin Admin? @relation("AdminStockMovements", fields: [createdByAdminId], references: [id], onDelete: SetNull)
-
-  @@index([storeId])
-  @@index([productId])
-  @@index([variantId])
-  @@index([storeId, createdAt])
-  @@index([storeId, productId, createdAt])
-  @@index([storeId, variantId, createdAt])
-  @@map("stock_movements")
-}
-
-// ─── ProductDiscount ──────────────────────────────────────────────────────────
-// One discount record per product. Supports independent discounts for
-// Harga Normal (guest) and Harga Retail (ritel/logged-in).
-// startDate/endDate are nullable — reserved for future time-limited promos.
-
-model ProductDiscount {
-  id                   String    @id @default(uuid())
-  storeId              String
-  productId            String    @unique
-  normalDiscount       Int?      // 1-100, discount % for basePrice (Harga Normal / guest)
-  normalDiscountActive Boolean   @default(false)
-  retailDiscount       Int?      // 1-100, discount % for wholesalePrice (Harga Retail / ritel)
-  retailDiscountActive Boolean   @default(false)
-  startDate            DateTime? // reserved for future time-limited promo
-  endDate              DateTime? // reserved for future time-limited promo
-  createdAt            DateTime  @default(now())
-  updatedAt            DateTime  @updatedAt
-
-  store   Store   @relation(fields: [storeId], references: [id], onDelete: Cascade)
-  product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
-
-  @@index([storeId])
-  @@map("product_discounts")
-}
-
-// ─── Category ─────────────────────────────────────────────────────────────────
-
-model Category {
-  id        String    @id @default(uuid())
-  storeId   String
-  name      String
-  icon      String?
-  createdAt DateTime  @default(now())
-  updatedAt DateTime  @updatedAt
-
-  store     Store     @relation(fields: [storeId], references: [id], onDelete: Cascade)
-  products  Product[]
-
-  @@index([storeId])
-  @@map("categories")
-}
-
-// ─── Unit ─────────────────────────────────────────────────────────────────────
-
-model Unit {
-  id        String    @id @default(uuid())
-  storeId   String
-  name      String
-  createdAt DateTime  @default(now())
-  updatedAt DateTime  @updatedAt
-
-  store     Store     @relation(fields: [storeId], references: [id], onDelete: Cascade)
-  products  Product[]
-
-  @@index([storeId])
-  @@map("units")
 }
