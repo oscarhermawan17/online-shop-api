@@ -22,6 +22,13 @@ export interface CustomerRegisterInput {
   password: string;
 }
 
+export interface ChangePasswordInput {
+  customerId: string;
+  storeId: string;
+  currentPassword: string;
+  newPassword: string;
+}
+
 export interface CustomerLoginResult {
   token: string;
   customer: {
@@ -202,4 +209,57 @@ export const getCurrentCustomer = async (
       type: customer.type,
     },
   };
+};
+
+export const changePassword = async (input: ChangePasswordInput): Promise<void> => {
+  const { customerId, storeId, currentPassword, newPassword } = input;
+
+  if (!currentPassword) {
+    throw new AppError('Password saat ini wajib diisi', 400);
+  }
+
+  if (!newPassword || newPassword.length < 6) {
+    throw new AppError('Password baru minimal 6 karakter', 400);
+  }
+
+  if (currentPassword === newPassword) {
+    throw new AppError('Password baru harus berbeda dari password saat ini', 400);
+  }
+
+  const customer = await prisma.customer.findFirst({
+    where: {
+      id: customerId,
+      storeId,
+      password: {
+        not: null,
+      },
+    },
+    select: {
+      id: true,
+      password: true,
+      isActive: true,
+    },
+  });
+
+  if (!customer || !customer.password) {
+    throw new AppError('Customer not found', 404);
+  }
+
+  if (!customer.isActive) {
+    throw new AppError('Akun pelanggan ini sedang dinonaktifkan', 403);
+  }
+
+  const isValidCurrentPassword = await bcrypt.compare(currentPassword, customer.password);
+  if (!isValidCurrentPassword) {
+    throw new AppError('Password saat ini tidak sesuai', 400);
+  }
+
+  const hashedPassword = await bcrypt.hash(newPassword, 10);
+
+  await prisma.customer.update({
+    where: { id: customer.id },
+    data: {
+      password: hashedPassword,
+    },
+  });
 };

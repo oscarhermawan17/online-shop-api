@@ -53,3 +53,27 @@ export const me = async (
     next(error);
   }
 };
+
+export const changePassword = async (
+  req: CustomerAuthRequest,
+  res: Response,
+  next: NextFunction,
+): Promise<void> => {
+  try {
+    const { currentPassword, newPassword } = req.body as {
+      currentPassword?: string;
+      newPassword?: string;
+    };
+
+    await customerAuthService.changePassword({
+      customerId: req.customer!.customerId,
+      storeId: req.customer!.storeId,
+      currentPassword: String(currentPassword ?? ''),
+      newPassword: String(newPassword ?? ''),
+    });
+
+    sendSuccess(res, { updated: true }, 'Password berhasil diperbarui', 200);
+  } catch (error) {
+    next(error);
+  }
+};
