@@ -29,6 +29,14 @@ export interface ChangePasswordInput {
   newPassword: string;
 }
 
+export interface UpdateCurrentCustomerInput {
+  customerId: string;
+  storeId: string;
+  name?: string;
+  email?: string | null;
+  avatarUrl?: string | null;
+}
+
 export interface CustomerLoginResult {
   token: string;
   customer: {
@@ -36,6 +44,7 @@ export interface CustomerLoginResult {
     name: string | null;
     phone: string;
     email: string | null;
+    avatarUrl: string | null;
     type: CustomerType;
   };
 }
@@ -46,6 +55,18 @@ export interface CurrentCustomerResult {
     name: string | null;
     phone: string;
     email: string | null;
+    avatarUrl: string | null;
+    type: CustomerType;
+  };
+}
+
+export interface UpdateCurrentCustomerResult {
+  customer: {
+    id: string;
+    name: string | null;
+    phone: string;
+    email: string | null;
+    avatarUrl: string | null;
     type: CustomerType;
   };
 }
@@ -99,6 +120,7 @@ export const login = async (input: CustomerLoginInput): Promise<CustomerLoginRes
       name: customer.name,
       phone: customer.phone,
       email: customer.email,
+      avatarUrl: customer.avatarUrl,
       type: customer.type,
     },
   };
@@ -187,6 +209,7 @@ export const getCurrentCustomer = async (
       name: true,
       phone: true,
       email: true,
+      avatarUrl: true,
       type: true,
       isActive: true,
     },
@@ -206,8 +229,114 @@ export const getCurrentCustomer = async (
       name: customer.name,
       phone: customer.phone,
       email: customer.email,
+      avatarUrl: customer.avatarUrl,
       type: customer.type,
     },
+  };
+};
+
+export const updateCurrentCustomer = async (
+  input: UpdateCurrentCustomerInput,
+): Promise<UpdateCurrentCustomerResult> => {
+  const { customerId, storeId } = input;
+
+  const hasName = input.name !== undefined;
+  const hasEmail = input.email !== undefined;
+  const hasAvatar = input.avatarUrl !== undefined;
+
+  const name = typeof input.name === 'string' ? input.name.trim() : undefined;
+  const emailRaw = typeof input.email === 'string' ? input.email.trim() : input.email;
+  const avatarRaw = typeof input.avatarUrl === 'string' ? input.avatarUrl.trim() : input.avatarUrl;
+
+  if (!hasName && !hasEmail && !hasAvatar) {
+    throw new AppError('Tidak ada data profil yang diperbarui', 400);
+  }
+
+  if (hasName) {
+    if (!name) {
+      throw new AppError('Nama wajib diisi', 400);
+    }
+
+    if (name.length < 2) {
+      throw new AppError('Nama minimal 2 karakter', 400);
+    }
+  }
+
+  const email = hasEmail ? (emailRaw ? emailRaw.toLowerCase() : null) : undefined;
+
+  if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    throw new AppError('Format email tidak valid', 400);
+  }
+
+  const avatarUrl = hasAvatar ? (avatarRaw || null) : undefined;
+
+  if (avatarUrl) {
+    try {
+      const parsed = new URL(avatarUrl);
+      if (!['http:', 'https:'].includes(parsed.protocol)) {
+        throw new AppError('Format URL foto profil tidak valid', 400);
+      }
+    } catch {
+      throw new AppError('Format URL foto profil tidak valid', 400);
+    }
+  }
+
+  const customer = await prisma.customer.findFirst({
+    where: {
+      id: customerId,
+      storeId,
+      password: {
+        not: null,
+      },
+    },
+    select: {
+      id: true,
+      isActive: true,
+    },
+  });
+
+  if (!customer) {
+    throw new AppError('Customer not found', 404);
+  }
+
+  if (!customer.isActive) {
+    throw new AppError('Akun pelanggan ini sedang dinonaktifkan', 403);
+  }
+
+  if (email) {
+    const existingEmailCustomer = await prisma.customer.findFirst({
+      where: {
+        storeId,
+        email,
+        id: { not: customerId },
+      },
+      select: { id: true },
+    });
+
+    if (existingEmailCustomer) {
+      throw new AppError('Email sudah digunakan oleh akun lain', 409);
+    }
+  }
+
+  const updated = await prisma.customer.update({
+    where: { id: customerId },
+    data: {
+      ...(hasName ? { name } : {}),
+      ...(hasEmail ? { email } : {}),
+      ...(hasAvatar ? { avatarUrl } : {}),
+    },
+    select: {
+      id: true,
+      name: true,
+      phone: true,
+      email: true,
+      avatarUrl: true,
+      type: true,
+    },
+  });
+
+  return {
+    customer: updated,
   };
 };
 

@@ -9,6 +9,7 @@ const router = Router();
 router.post('/login', customerAuthController.login);
 router.post('/register', customerAuthController.register);
 router.get('/me', requireCustomerAuth, customerAuthController.me);
+router.patch('/me', requireCustomerAuth, customerAuthController.updateMe);
 router.patch('/password', requireCustomerAuth, customerAuthController.changePassword);
 
 export default router;

@@ -54,6 +54,32 @@ export const me = async (
   }
 };
 
+export const updateMe = async (
+  req: CustomerAuthRequest,
+  res: Response,
+  next: NextFunction,
+): Promise<void> => {
+  try {
+    const { name, email, avatarUrl } = req.body as {
+      name?: string;
+      email?: string | null;
+      avatarUrl?: string | null;
+    };
+
+    const result = await customerAuthService.updateCurrentCustomer({
+      customerId: req.customer!.customerId,
+      storeId: req.customer!.storeId,
+      name,
+      email,
+      avatarUrl,
+    });
+
+    sendSuccess(res, result, 'Profil berhasil diperbarui', 200);
+  } catch (error) {
+    next(error);
+  }
+};
+
 export const changePassword = async (
   req: CustomerAuthRequest,
   res: Response,
