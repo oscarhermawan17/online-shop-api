@@ -16,6 +16,14 @@ export interface CarouselSlideInput {
 const DEFAULT_BACKGROUND_COLOR = '#166534';
 const HEX_COLOR_REGEX = /^#(?:[0-9A-Fa-f]{3}|[0-9A-Fa-f]{6})$/;
 
+const isMissingShowTextColumnError = (error: unknown) => {
+  if (!(error instanceof Error)) {
+    return false;
+  }
+
+  return error.message.includes('carousel_slides.showText');
+};
+
 const normalizeOptionalString = (value?: string | null) => {
   const trimmedValue = value?.trim();
   return trimmedValue ? trimmedValue : null;
@@ -120,22 +128,83 @@ const getStoreOrThrow = async (storeId?: string) => {
 export const getPublicCarouselSlides = async () => {
   const store = await getStoreOrThrow();
 
-  return prisma.carouselSlide.findMany({
-    where: {
-      storeId: store.id,
-      isActive: true,
-    },
-    orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }],
-  });
+  try {
+    return await prisma.carouselSlide.findMany({
+      where: {
+        storeId: store.id,
+        isActive: true,
+      },
+      orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }],
+    });
+  } catch (error) {
+    if (!isMissingShowTextColumnError(error)) {
+      throw error;
+    }
+
+    const fallbackSlides = await prisma.carouselSlide.findMany({
+      where: {
+        storeId: store.id,
+        isActive: true,
+      },
+      orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }],
+      select: {
+        id: true,
+        storeId: true,
+        title: true,
+        subtitle: true,
+        badge: true,
+        imageUrl: true,
+        backgroundColor: true,
+        isActive: true,
+        sortOrder: true,
+        createdAt: true,
+        updatedAt: true,
+      },
+    });
+
+    return fallbackSlides.map((slide) => ({
+      ...slide,
+      showText: true,
+    }));
+  }
 };
 
 export const getAdminCarouselSlides = async (storeId: string) => {
   await getStoreOrThrow(storeId);
 
-  return prisma.carouselSlide.findMany({
-    where: { storeId },
-    orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }],
-  });
+  try {
+    return await prisma.carouselSlide.findMany({
+      where: { storeId },
+      orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }],
+    });
+  } catch (error) {
+    if (!isMissingShowTextColumnError(error)) {
+      throw error;
+    }
+
+    const fallbackSlides = await prisma.carouselSlide.findMany({
+      where: { storeId },
+      orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }],
+      select: {
+        id: true,
+        storeId: true,
+        title: true,
+        subtitle: true,
+        badge: true,
+        imageUrl: true,
+        backgroundColor: true,
+        isActive: true,
+        sortOrder: true,
+        createdAt: true,
+        updatedAt: true,
+      },
+    });
+
+    return fallbackSlides.map((slide) => ({
+      ...slide,
+      showText: true,
+    }));
+  }
 };
 
 export const replaceCarouselSlides = async (
@@ -160,38 +229,54 @@ export const replaceCarouselSlides = async (
     existingSlides.map((slide) => [slide.id, slide] as const),
   );
 
-  return prisma.$transaction(async (tx) => {
-    await tx.carouselSlide.deleteMany({
-      where: { storeId },
+  const runReplaceTransaction = async (omitShowText: boolean) =>
+    prisma.$transaction(async (tx) => {
+      await tx.carouselSlide.deleteMany({
+        where: { storeId },
+      });
+
+      if (slides.length === 0) {
+        return [];
+      }
+
+      const createdSlides = await Promise.all(
+        slides.map((slide) =>
+          tx.carouselSlide.create({
+            data: {
+              id: slide.id ?? undefined,
+              storeId,
+              title: slide.title,
+              subtitle: slide.subtitle,
+              badge: slide.badge,
+              imageUrl: slide.imageUrl,
+              backgroundColor: slide.backgroundColor,
+              ...(omitShowText ? {} : { showText: slide.showText }),
+              isActive: slide.isActive,
+              sortOrder: slide.sortOrder,
+              createdAt:
+                slide.id && existingSlidesMap.has(slide.id)
+                  ? existingSlidesMap.get(slide.id)!.createdAt
+                  : undefined,
+            },
+          }),
+        ),
+      );
+
+      return createdSlides
+        .sort((a, b) => a.sortOrder - b.sortOrder)
+        .map((slide) => ({
+          ...slide,
+          showText: slide.showText ?? true,
+        }));
     });
 
-    if (slides.length === 0) {
-      return [];
+  try {
+    return await runReplaceTransaction(false);
+  } catch (error) {
+    if (!isMissingShowTextColumnError(error)) {
+      throw error;
     }
 
-    const createdSlides = await Promise.all(
-      slides.map((slide) =>
-        tx.carouselSlide.create({
-          data: {
-            id: slide.id ?? undefined,
-            storeId,
-            title: slide.title,
-            subtitle: slide.subtitle,
-            badge: slide.badge,
-            imageUrl: slide.imageUrl,
-            backgroundColor: slide.backgroundColor,
-            showText: slide.showText,
-            isActive: slide.isActive,
-            sortOrder: slide.sortOrder,
-            createdAt:
-              slide.id && existingSlidesMap.has(slide.id)
-                ? existingSlidesMap.get(slide.id)!.createdAt
-                : undefined,
-          },
-        }),
-      ),
-    );
-
-    return createdSlides.sort((a, b) => a.sortOrder - b.sortOrder);
-  });
+    return runReplaceTransaction(true);
+  }
 };
