@@ -3,11 +3,12 @@ import { AppError } from '../../middlewares/error.middleware';
 
 export interface CarouselSlideInput {
   id?: string;
-  title: string;
+  title?: string;
   subtitle?: string;
   badge?: string;
   imageUrl?: string;
   backgroundColor?: string;
+  showText?: boolean;
   isActive?: boolean;
   sortOrder?: number;
 }
@@ -37,18 +38,16 @@ const normalizeColor = (value?: string | null) => {
 const normalizeSlideInput = (
   slide: CarouselSlideInput,
   index: number,
-): Required<Pick<CarouselSlideInput, 'title' | 'backgroundColor' | 'isActive'>> &
+): Required<Pick<CarouselSlideInput, 'backgroundColor' | 'isActive'>> &
   Pick<CarouselSlideInput, 'id'> & {
+    title: string;
     subtitle: string | null;
     badge: string | null;
     imageUrl: string | null;
+    showText: boolean;
     sortOrder: number;
   } => {
-  const title = slide.title?.trim();
-
-  if (!title) {
-    throw new AppError(`Slide ${index + 1}: title is required`, 400);
-  }
+  const title = normalizeOptionalString(slide.title) ?? '';
 
   if (title.length > 120) {
     throw new AppError(`Slide ${index + 1}: title must be at most 120 characters`, 400);
@@ -84,6 +83,7 @@ const normalizeSlideInput = (
     badge,
     imageUrl,
     backgroundColor: normalizeColor(slide.backgroundColor),
+    showText: slide.showText ?? true,
     isActive: slide.isActive ?? true,
     sortOrder: index,
   };
@@ -180,6 +180,7 @@ export const replaceCarouselSlides = async (
             badge: slide.badge,
             imageUrl: slide.imageUrl,
             backgroundColor: slide.backgroundColor,
+            showText: slide.showText,
             isActive: slide.isActive,
             sortOrder: slide.sortOrder,
             createdAt:
