@@ -496,6 +496,77 @@ export const deleteVariantDiscountRule = async (
     next(error);
   }
 };
+
+// ─── Product Discount Rules (apply to all variants) ──────────────────────────
+
+export const listProductDiscountRules = async (
+  req: AuthRequest,
+  res: Response,
+  next: NextFunction,
+): Promise<void> => {
+  try {
+    const rules = await productsService.listProductDiscountRules(
+      req.user!.storeId,
+      req.params.id as string,
+    );
+    sendSuccess(res, rules, 'Product discount rules fetched successfully');
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const createProductDiscountRule = async (
+  req: AuthRequest,
+  res: Response,
+  next: NextFunction,
+): Promise<void> => {
+  try {
+    const rule = await productsService.createProductDiscountRule(
+      req.user!.storeId,
+      req.params.id as string,
+      req.body,
+    );
+    sendSuccess(res, rule, 'Product discount rule created successfully', 201);
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const updateProductDiscountRule = async (
+  req: AuthRequest,
+  res: Response,
+  next: NextFunction,
+): Promise<void> => {
+  try {
+    const rule = await productsService.updateProductDiscountRule(
+      req.user!.storeId,
+      req.params.id as string,
+      req.params.ruleId as string,
+      req.body,
+    );
+    sendSuccess(res, rule, 'Product discount rule updated successfully');
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const deleteProductDiscountRule = async (
+  req: AuthRequest,
+  res: Response,
+  next: NextFunction,
+): Promise<void> => {
+  try {
+    await productsService.deleteProductDiscountRule(
+      req.user!.storeId,
+      req.params.id as string,
+      req.params.ruleId as string,
+    );
+    sendSuccess(res, null, 'Product discount rule deleted successfully');
+  } catch (error) {
+    next(error);
+  }
+};
+
 // ─── PUT /admin/products/:id/discount ────────────────────────────────────────
 
 export const upsertDiscount = async (

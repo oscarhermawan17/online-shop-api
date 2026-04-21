@@ -46,16 +46,16 @@ export interface CreateProductOptionInput {
 }
 
 export interface CreateVariantInput {
-  name?: string;
+  name: string;
   imageUrl?: string | null;
-  priceOverride?: number;
-  wholesalePriceOverride?: number;
+  priceOverride?: number | null;
+  wholesalePriceOverride?: number | null;
   stock: number;
   optionValueIds?: string[];
 }
 
 export interface CreateProductVariantInput {
-  name?: string;
+  name: string;
   imageUrl?: string | null;
   basePrice: number;
   wholesalePrice?: number | null;
@@ -88,6 +88,9 @@ export interface UpdateVariantDiscountRuleInput {
   priority?: number;
 }
 
+export type CreateProductDiscountRuleInput = CreateVariantDiscountRuleInput;
+export type UpdateProductDiscountRuleInput = UpdateVariantDiscountRuleInput;
+
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 const variantInclude = {
@@ -101,12 +104,22 @@ const variantInclude = {
   },
 };
 
+const productDiscountRuleOrderBy = [
+  { isActive: 'desc' as const },
+  { priority: 'desc' as const },
+  { minThreshold: 'desc' as const },
+  { createdAt: 'asc' as const },
+];
+
 const productInclude = {
   categories: true,
   unit: true,
   images: { orderBy: { createdAt: 'asc' as const } },
   options: { include: { values: true } },
   variants: { include: variantInclude },
+  productDiscountRules: {
+    orderBy: productDiscountRuleOrderBy,
+  },
   discount: true,
 };
 
@@ -143,6 +156,45 @@ const assertVariantOwnership = async (
   }
 
   return variant;
+};
+
+const assertProductOwnership = async (
+  storeId: string,
+  productId: string,
+) => {
+  const product = await prisma.product.findFirst({
+    where: {
+      id: productId,
+      storeId,
+    },
+    select: {
+      id: true,
+    },
+  });
+
+  if (!product) {
+    throw new AppError('Product not found', 404);
+  }
+
+  return product;
+};
+
+const normalizeVariantName = (name: unknown, fieldLabel: string): string => {
+  if (typeof name !== 'string') {
+    throw new AppError(`${fieldLabel} is required`, 400);
+  }
+
+  const normalizedName = name.trim();
+
+  if (!normalizedName) {
+    throw new AppError(`${fieldLabel} is required`, 400);
+  }
+
+  if (normalizedName.length > 100) {
+    throw new AppError(`${fieldLabel} must be at most 100 characters`, 400);
+  }
+
+  return normalizedName;
 };
 
 const normalizeRuleInput = (
@@ -286,8 +338,8 @@ export const createProduct = async (
   data: CreateProductInput,
   createdByAdminId?: string,
 ) => {
-  const normalizedVariants = data.variants?.map((variant) => ({
-    name: variant.name?.trim() || null,
+  const normalizedVariants = data.variants?.map((variant, index) => ({
+    name: normalizeVariantName(variant.name, `variants[${index}].name`),
     imageUrl: variant.imageUrl ?? null,
     basePrice: variant.basePrice,
     wholesalePrice: variant.wholesalePrice ?? null,
@@ -578,13 +630,14 @@ export const addProductVariant = async (
   createdByAdminId?: string,
 ) => {
   await getProduct(storeId, productId);
+  const normalizedName = normalizeVariantName(data.name, 'name');
 
   return prisma.$transaction(async (tx) => {
     const variant = await tx.variant.create({
       data: {
         storeId,
         productId,
-        name: data.name,
+        name: normalizedName,
         imageUrl: data.imageUrl ?? null,
         priceOverride: data.priceOverride,
         wholesalePriceOverride: data.wholesalePriceOverride,
@@ -629,6 +682,9 @@ export const updateProductVariant = async (
   updatedByAdminId?: string,
 ) => {
   await getProduct(storeId, productId);
+  const normalizedName = data.name !== undefined
+    ? normalizeVariantName(data.name, 'name')
+    : undefined;
 
   return prisma.$transaction(async (tx) => {
     const variant = await tx.variant.findFirst({
@@ -646,7 +702,10 @@ export const updateProductVariant = async (
 
     const updatedVariant = await tx.variant.update({
       where: { id: variantId },
-      data,
+      data: {
+        ...data,
+        name: normalizedName,
+      },
       include: variantInclude,
     });
 
@@ -823,6 +882,130 @@ export const deleteVariantDiscountRule = async (
   }
 
   await prisma.variantDiscountRule.delete({
+    where: { id: existing.id },
+  });
+};
+
+// ─── Product Discount Rules (apply to all variants) ──────────────────────────
+
+export const listProductDiscountRules = async (
+  storeId: string,
+  productId: string,
+) => {
+  await assertProductOwnership(storeId, productId);
+
+  return prisma.productDiscountRule.findMany({
+    where: {
+      storeId,
+      productId,
+    },
+    orderBy: productDiscountRuleOrderBy,
+  });
+};
+
+export const createProductDiscountRule = async (
+  storeId: string,
+  productId: string,
+  data: CreateProductDiscountRuleInput,
+) => {
+  await assertProductOwnership(storeId, productId);
+
+  const normalized = normalizeRuleInput(data);
+  validateRuleInput(normalized, false);
+
+  return prisma.productDiscountRule.create({
+    data: {
+      storeId,
+      productId,
+      name: normalized.name ?? null,
+      triggerType: normalized.triggerType!,
+      minThreshold: normalized.minThreshold!,
+      maxThreshold: normalized.maxThreshold ?? null,
+      valueType: normalized.valueType!,
+      value: normalized.value!,
+      applyMode: normalized.applyMode!,
+      customerType: normalized.customerType ?? null,
+      isActive: normalized.isActive ?? true,
+      priority: normalized.priority ?? 0,
+    },
+  });
+};
+
+export const updateProductDiscountRule = async (
+  storeId: string,
+  productId: string,
+  ruleId: string,
+  data: UpdateProductDiscountRuleInput,
+) => {
+  await assertProductOwnership(storeId, productId);
+
+  const existing = await prisma.productDiscountRule.findFirst({
+    where: {
+      id: ruleId,
+      storeId,
+      productId,
+    },
+  });
+
+  if (!existing) {
+    throw new AppError('Product discount rule not found', 404);
+  }
+
+  const normalized = normalizeRuleInput(data);
+
+  const merged: UpdateProductDiscountRuleInput = {
+    name: normalized.name ?? existing.name,
+    triggerType: normalized.triggerType ?? existing.triggerType,
+    minThreshold: normalized.minThreshold ?? existing.minThreshold,
+    maxThreshold: normalized.maxThreshold ?? existing.maxThreshold,
+    valueType: normalized.valueType ?? existing.valueType,
+    value: normalized.value ?? existing.value,
+    applyMode: normalized.applyMode ?? existing.applyMode,
+    customerType: normalized.customerType ?? existing.customerType,
+    isActive: normalized.isActive ?? existing.isActive,
+    priority: normalized.priority ?? existing.priority,
+  };
+
+  validateRuleInput(merged, false);
+
+  return prisma.productDiscountRule.update({
+    where: { id: existing.id },
+    data: {
+      name: normalized.name !== undefined ? normalized.name : undefined,
+      triggerType: normalized.triggerType,
+      minThreshold: normalized.minThreshold,
+      maxThreshold: normalized.maxThreshold,
+      valueType: normalized.valueType,
+      value: normalized.value,
+      applyMode: normalized.applyMode,
+      customerType: normalized.customerType,
+      isActive: normalized.isActive,
+      priority: normalized.priority,
+    },
+  });
+};
+
+export const deleteProductDiscountRule = async (
+  storeId: string,
+  productId: string,
+  ruleId: string,
+) => {
+  await assertProductOwnership(storeId, productId);
+
+  const existing = await prisma.productDiscountRule.findFirst({
+    where: {
+      id: ruleId,
+      storeId,
+      productId,
+    },
+    select: { id: true },
+  });
+
+  if (!existing) {
+    throw new AppError('Product discount rule not found', 404);
+  }
+
+  await prisma.productDiscountRule.delete({
     where: { id: existing.id },
   });
 };

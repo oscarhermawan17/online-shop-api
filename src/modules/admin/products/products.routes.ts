@@ -43,6 +43,13 @@ router.post('/:id/variants/:variantId/discount-rules', productsController.create
 router.patch('/:id/variants/:variantId/discount-rules/:ruleId', productsController.updateVariantDiscountRule);
 router.delete('/:id/variants/:variantId/discount-rules/:ruleId', productsController.deleteVariantDiscountRule);
 
+// ─── Product Discount Rules (apply to all variants) ──────────────────────────
+
+router.get('/:id/discount-rules', productsController.listProductDiscountRules);
+router.post('/:id/discount-rules', productsController.createProductDiscountRule);
+router.patch('/:id/discount-rules/:ruleId', productsController.updateProductDiscountRule);
+router.delete('/:id/discount-rules/:ruleId', productsController.deleteProductDiscountRule);
+
 // ─── Product Discount (legacy) ───────────────────────────────────────────────
 
 router.put('/:id/discount', productsController.upsertDiscount);

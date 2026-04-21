@@ -184,8 +184,19 @@ const formatProductForPublic = (product: ProductWithRelations, isWholesale: bool
     const retailPrice = variant.priceOverride ?? product.basePrice;
     const wholesalePrice = variant.wholesalePriceOverride ?? product.wholesalePrice ?? retailPrice;
     const rawPrice = isWholesale ? wholesalePrice : retailPrice;
+    const combinedRules = [
+      ...variant.discountRules.map((rule) => ({
+        ...rule,
+        source: 'variant' as const,
+      })),
+      ...product.productDiscountRules.map((rule) => ({
+        ...rule,
+        source: 'product' as const,
+        variantId: variant.id,
+      })),
+    ];
 
-    const pricing = resolveVariantDiscount(variant.discountRules, {
+    const pricing = resolveVariantDiscount(combinedRules, {
       quantity: 1,
       unitPrice: rawPrice,
       customerType,
@@ -198,7 +209,7 @@ const formatProductForPublic = (product: ProductWithRelations, isWholesale: bool
       stock: variant.stock,
       price: pricing.effectiveUnitPrice,
       activeDiscountRuleId: pricing.rule?.id ?? null,
-      discountRules: variant.discountRules,
+      discountRules: combinedRules,
       options: variant.optionValues.map((ov: VariantOptionValue) => ({
         optionId: ov.optionValue.optionId,
         optionValueId: ov.optionValueId,
@@ -216,7 +227,10 @@ const formatProductForPublic = (product: ProductWithRelations, isWholesale: bool
     basePrice: effectiveBasePrice,
     // Keep legacy field for compatibility but stop using product-level discount.
     discount: null,
-    hasVariantPromo: sellableVariants.some((variant) => variant.discountRules.length > 0),
+    hasVariantPromo: (
+      product.productDiscountRules.length > 0
+      || sellableVariants.some((variant) => variant.discountRules.length > 0)
+    ),
     stock: sellableVariants.reduce((sum, variant) => sum + variant.stock, 0),
     variants: resolvedVariants,
   };
@@ -255,6 +269,14 @@ const getProductById = (productId: string) => {
             ],
           },
         },
+      },
+      productDiscountRules: {
+        where: { isActive: true },
+        orderBy: [
+          { priority: 'desc' },
+          { minThreshold: 'desc' },
+          { createdAt: 'asc' },
+        ],
       },
       discount: true,
     },
@@ -302,6 +324,14 @@ export const listProducts = async ({
             ],
           },
         },
+      },
+      productDiscountRules: {
+        where: { isActive: true },
+        orderBy: [
+          { priority: 'desc' },
+          { minThreshold: 'desc' },
+          { createdAt: 'asc' },
+        ],
       },
       discount: true,
     },

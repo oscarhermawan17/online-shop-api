@@ -54,6 +54,7 @@ model Store {
   orders                                 Order[]
   paymentProofs                          PaymentProof[]
   productDiscounts                       ProductDiscount[]
+  productDiscountRules                   ProductDiscountRule[]
   productImages                          ProductImage[]
   productOptionValues                    ProductOptionValue[]
   productOptions                         ProductOption[]
@@ -103,6 +104,7 @@ model Product {
   discount       ProductDiscount?
   images         ProductImage[]
   options        ProductOption[]
+  productDiscountRules ProductDiscountRule[]
   store          Store            @relation(fields: [storeId], references: [id], onDelete: Cascade)
   unit           Unit?            @relation(fields: [unitId], references: [id])
   stockMovements StockMovement[]
@@ -208,6 +210,32 @@ model VariantDiscountRule {
   @@index([variantId, isActive])
   @@index([variantId, customerType, isActive])
   @@map("variant_discount_rules")
+}
+
+model ProductDiscountRule {
+  id           String              @id @default(uuid())
+  storeId      String
+  productId    String
+  name         String?
+  triggerType  DiscountTriggerType
+  minThreshold Int
+  maxThreshold Int?
+  valueType    DiscountValueType
+  value        Int
+  applyMode    DiscountApplyMode
+  customerType CustomerType?
+  isActive     Boolean             @default(true)
+  priority     Int                 @default(0)
+  createdAt    DateTime            @default(now())
+  updatedAt    DateTime            @updatedAt
+  product      Product             @relation(fields: [productId], references: [id], onDelete: Cascade)
+  store        Store               @relation(fields: [storeId], references: [id], onDelete: Cascade)
+
+  @@index([storeId])
+  @@index([productId])
+  @@index([productId, isActive])
+  @@index([productId, customerType, isActive])
+  @@map("product_discount_rules")
 }
 
 model Customer {

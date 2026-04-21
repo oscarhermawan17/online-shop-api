@@ -238,6 +238,14 @@ export const checkout = async (input: CheckoutInput) => {
     const product = await prisma.product.findUnique({
       where: { id: item.productId },
       include: {
+        productDiscountRules: {
+          where: { isActive: true },
+          orderBy: [
+            { priority: 'desc' },
+            { minThreshold: 'desc' },
+            { createdAt: 'asc' },
+          ],
+        },
         variants: {
           include: {
             optionValues: {
@@ -283,8 +291,18 @@ export const checkout = async (input: CheckoutInput) => {
     const retailPrice = variant.priceOverride ?? product.basePrice;
     const wholesalePrice = variant.wholesalePriceOverride ?? product.wholesalePrice ?? retailPrice;
     const rawUnitPrice = isWholesale ? wholesalePrice : retailPrice;
+    const combinedRules = [
+      ...variant.discountRules.map((rule) => ({
+        ...rule,
+        source: 'variant' as const,
+      })),
+      ...product.productDiscountRules.map((rule) => ({
+        ...rule,
+        source: 'product' as const,
+      })),
+    ];
 
-    const pricing = resolveVariantDiscount(variant.discountRules, {
+    const pricing = resolveVariantDiscount(combinedRules, {
       quantity: item.quantity,
       unitPrice: rawUnitPrice,
       customerType: customer.type,

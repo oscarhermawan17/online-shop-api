@@ -8,6 +8,7 @@ import {
 export interface VariantDiscountRuleLike {
   id: string;
   name?: string | null;
+  source?: 'variant' | 'product';
   triggerType: DiscountTriggerType;
   minThreshold: number;
   maxThreshold: number | null;
@@ -38,6 +39,10 @@ const clamp = (value: number, min: number, max: number): number => {
   if (value > max) return max;
   return value;
 };
+
+const getScopePriority = (rule: VariantDiscountRuleLike): number => (
+  rule.source === 'product' ? 0 : 1
+);
 
 const isRuleApplicable = (
   rule: VariantDiscountRuleLike,
@@ -114,6 +119,11 @@ export const resolveVariantDiscount = (
       discountAmount: getRuleDiscountAmount(rule, ctx),
     }))
     .sort((a, b) => {
+      const scopePriorityDiff = getScopePriority(b.rule) - getScopePriority(a.rule);
+      if (scopePriorityDiff !== 0) {
+        return scopePriorityDiff;
+      }
+
       if (b.discountAmount !== a.discountAmount) {
         return b.discountAmount - a.discountAmount;
       }
