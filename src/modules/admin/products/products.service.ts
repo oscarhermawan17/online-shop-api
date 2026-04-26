@@ -338,8 +338,15 @@ export const createProduct = async (
   data: CreateProductInput,
   createdByAdminId?: string,
 ) => {
-  const normalizedVariants = data.variants?.map((variant, index) => ({
-    name: normalizeVariantName(variant.name, `variants[${index}].name`),
+  // Validate: multiple variants must each have a name (mirrors FE superRefine logic)
+  if (data.variants && data.variants.length > 1) {
+    data.variants.forEach((variant, index) => {
+      normalizeVariantName(variant.name, `variants[${index}].name`);
+    });
+  }
+
+  const normalizedVariants = data.variants?.map((variant) => ({
+    name: variant.name?.trim() || null, // null is valid for single variant
     imageUrl: variant.imageUrl ?? null,
     basePrice: variant.basePrice,
     wholesalePrice: variant.wholesalePrice ?? null,
