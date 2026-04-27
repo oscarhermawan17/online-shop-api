@@ -8,5 +8,6 @@ const router = Router();
 router.use(requireCustomerAuth);
 
 router.get('/', creditController.getMyCreditSummary);
+router.get('/orders', creditController.getMyCreditOrders);
 
 export default router;

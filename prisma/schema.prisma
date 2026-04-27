@@ -313,14 +313,15 @@ model Order {
 }
 
 model CustomerCredit {
-  id          String   @id @default(uuid())
-  storeId     String
-  customerId  String   @unique
-  creditLimit Int      @default(0)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-  customer    Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
-  store       Store    @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  id              String   @id @default(uuid())
+  storeId         String
+  customerId      String   @unique
+  creditLimit     Int      @default(0)
+  termOfPayment   Int      @default(0)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  customer        Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  store           Store    @relation(fields: [storeId], references: [id], onDelete: Cascade)
 
   @@index([storeId])
   @@map("customer_credits")

@@ -2,6 +2,47 @@ import prisma from '../../../config/prisma';
 import { AppError } from '../../../middlewares/error.middleware';
 import { CREDIT_EXCLUDED_STATUSES, getPaidCreditAmount, getRemainingCreditAmount } from '../../../utils/credit';
 
+export const getMyCreditOrders = async (storeId: string, customerId: string) => {
+  const [orders, credit] = await Promise.all([
+    prisma.order.findMany({
+      where: { storeId, customerId, paymentMethod: 'credit' },
+      include: {
+        items: true,
+        paymentProof: true,
+        creditPayments: {
+          select: { id: true, amount: true, receivedAt: true },
+          orderBy: { receivedAt: 'asc' },
+        },
+        shippingAssignment: {
+          include: { shift: true },
+        },
+      },
+      orderBy: { createdAt: 'desc' },
+    }),
+    prisma.customerCredit.findFirst({
+      where: { storeId, customerId },
+      select: { termOfPayment: true },
+    }),
+  ]);
+
+  const termOfPayment = credit?.termOfPayment ?? 0;
+
+  return orders.map((order) => {
+    const paidAmount = getPaidCreditAmount(order.creditPayments);
+    const remainingAmount = getRemainingCreditAmount({
+      totalAmount: order.totalAmount,
+      paidAmount,
+      creditSettledAt: order.creditSettledAt,
+    });
+
+    const dueDate = termOfPayment > 0
+      ? new Date(new Date(order.createdAt).getTime() + termOfPayment * 24 * 60 * 60 * 1000).toISOString()
+      : null;
+
+    return { ...order, paidAmount, remainingAmount, termOfPayment, dueDate };
+  });
+};
+
 export const getMyCreditSummary = async (
   storeId: string,
   customerId: string,
