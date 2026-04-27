@@ -6,11 +6,20 @@ import {
   getRemainingCreditAmount,
   isCreditSettled,
 } from '../../../utils/credit';
+import { populateVariantDescriptions } from '../../../utils/order-item';
 
 const receivableInclude = {
   creditPayments: {
     orderBy: {
       receivedAt: 'desc',
+    },
+  },
+  items: true,
+  customer: {
+    include: {
+      credit: {
+        select: { termOfPayment: true },
+      },
     },
   },
 } as const;
@@ -25,12 +34,27 @@ const toReceivableResponse = (
     createdAt: Date;
     status: string;
     creditSettledAt: Date | null;
+    shippingCost: number;
     creditPayments: {
       id: string;
       amount: number;
       receivedAt: Date;
       createdAt: Date;
     }[];
+    items: {
+      id: string;
+      productName: string;
+      variantDescription: string | null;
+      price: number;
+      quantity: number;
+      originalPrice: number | null;
+      discountAmount: number;
+      discountRuleName: string | null;
+      imageUrl?: string | null;
+    }[];
+    customer: {
+      credit: { termOfPayment: number } | null;
+    };
   },
 ) => {
   const paidAmount = getPaidCreditAmount(order.creditPayments);
@@ -45,6 +69,11 @@ const toReceivableResponse = (
     creditSettledAt: order.creditSettledAt,
   });
 
+  const termOfPayment = order.customer.credit?.termOfPayment ?? 0;
+  const dueDate = termOfPayment > 0
+    ? new Date(order.createdAt.getTime() + termOfPayment * 24 * 60 * 60 * 1000)
+    : null;
+
   return {
     id: order.id,
     publicOrderId: order.publicOrderId,
@@ -57,6 +86,18 @@ const toReceivableResponse = (
     createdAt: order.createdAt,
     creditSettledAt: order.creditSettledAt,
     isSettled: settled,
+    termOfPayment,
+    dueDate,
+    items: order.items.map((item) => ({
+      id: item.id,
+      productName: item.productName,
+      variantDescription: item.variantDescription,
+      price: item.price,
+      quantity: item.quantity,
+      originalPrice: item.originalPrice,
+      discountAmount: item.discountAmount,
+      discountRuleName: item.discountRuleName,
+    })),
     payments: order.creditPayments.map((payment) => ({
       id: payment.id,
       amount: payment.amount,
@@ -125,8 +166,12 @@ export const listReceivables = async (input: ListReceivablesInput): Promise<List
     }),
   ]);
 
+  const allItems = await populateVariantDescriptions(orders.flatMap((o) => o.items));
+  const itemMap = new Map(allItems.map((i) => [i.id, i]));
+  const resolved = orders.map((o) => ({ ...o, items: o.items.map((i) => itemMap.get(i.id) ?? i) }));
+
   return {
-    receivables: orders.map(toReceivableResponse),
+    receivables: resolved.map(toReceivableResponse),
     total,
   };
 };

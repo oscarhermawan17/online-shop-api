@@ -6,6 +6,7 @@ import { CREDIT_EXCLUDED_STATUSES, getPaidCreditAmount, getRemainingCreditAmount
 import { restoreOrderStock } from '../../../utils/order-stock';
 import { recordStockMovement } from '../../../utils/stock-ledger';
 import { resolveVariantDiscount } from '../../../utils/variant-discount';
+import { populateVariantDescriptions } from '../../../utils/order-item';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -308,7 +309,7 @@ export const checkout = async (input: CheckoutInput) => {
       customerType: customer.type,
     });
 
-    // Build variant description from selected option values
+    // Build variant description from selected option values, fallback to variant.name
     const variantDescription = variant.optionValues.length > 0
       ? variant.optionValues
         .map(
@@ -316,7 +317,7 @@ export const checkout = async (input: CheckoutInput) => {
             `${ov.optionValue.option.name}: ${ov.optionValue.value}`,
         )
         .join(', ')
-      : null;
+      : (!variant.isDefault && variant.name ? variant.name : null);
 
     const updatedVariant = await prisma.variant.update({
       where: { id: variant.id },
@@ -568,6 +569,8 @@ export const getOrderStatus = async (publicOrderId: string) => {
     throw new AppError('Order not found', 404);
   }
 
+  const items = await populateVariantDescriptions(order.items);
+
   return {
     publicOrderId: order.publicOrderId,
     status: order.status,
@@ -582,7 +585,7 @@ export const getOrderStatus = async (publicOrderId: string) => {
     creditSettledAt: order.creditSettledAt,
     expiresAt: order.expiresAt,
     createdAt: order.createdAt,
-    items: order.items,
+    items,
     paymentProof: order.paymentProof,
     shippingAssignment: order.shippingAssignment
       ? {

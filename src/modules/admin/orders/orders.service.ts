@@ -5,6 +5,7 @@ import { AppError } from '../../../middlewares/error.middleware';
 import { getPaidCreditAmount, getRemainingCreditAmount, isCreditSettled } from '../../../utils/credit';
 import { restoreOrderStock } from '../../../utils/order-stock';
 import { toAdminOrderResponse } from './orders.mapper';
+import { populateVariantDescriptions } from '../../../utils/order-item';
 
 const adminOrderInclude = {
   items: true,
@@ -45,7 +46,11 @@ export const listOrders = async (input: ListOrdersInput) => {
     orderBy: { createdAt: 'desc' },
   });
 
-  return orders.map(toAdminOrderResponse);
+  const allItems = await populateVariantDescriptions(orders.flatMap((o) => o.items));
+  const itemMap = new Map(allItems.map((i) => [i.id, i]));
+  const resolved = orders.map((o) => ({ ...o, items: o.items.map((i) => itemMap.get(i.id) ?? i) }));
+
+  return resolved.map(toAdminOrderResponse);
 };
 
 export const getOrder = async (storeId: string, orderId: string) => {
@@ -58,7 +63,8 @@ export const getOrder = async (storeId: string, orderId: string) => {
     throw new AppError('Order not found', 404);
   }
 
-  return toAdminOrderResponse(order);
+  const items = await populateVariantDescriptions(order.items);
+  return toAdminOrderResponse({ ...order, items });
 };
 
 export const confirmPayment = async (storeId: string, orderId: string) => {

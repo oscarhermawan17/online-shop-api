@@ -1,6 +1,7 @@
 import prisma from '../../../config/prisma';
 import { AppError } from '../../../middlewares/error.middleware';
 import { CREDIT_EXCLUDED_STATUSES, getPaidCreditAmount, getRemainingCreditAmount } from '../../../utils/credit';
+import { populateVariantDescriptions } from '../../../utils/order-item';
 
 export const getMyCreditOrders = async (storeId: string, customerId: string) => {
   const [orders, credit] = await Promise.all([
@@ -27,6 +28,9 @@ export const getMyCreditOrders = async (storeId: string, customerId: string) => 
 
   const termOfPayment = credit?.termOfPayment ?? 0;
 
+  const allItems = await populateVariantDescriptions(orders.flatMap((o) => o.items));
+  const itemMap = new Map(allItems.map((item) => [item.id, item]));
+
   return orders.map((order) => {
     const paidAmount = getPaidCreditAmount(order.creditPayments);
     const remainingAmount = getRemainingCreditAmount({
@@ -39,7 +43,14 @@ export const getMyCreditOrders = async (storeId: string, customerId: string) => 
       ? new Date(new Date(order.createdAt).getTime() + termOfPayment * 24 * 60 * 60 * 1000).toISOString()
       : null;
 
-    return { ...order, paidAmount, remainingAmount, termOfPayment, dueDate };
+    return {
+      ...order,
+      items: order.items.map((item) => itemMap.get(item.id) ?? item),
+      paidAmount,
+      remainingAmount,
+      termOfPayment,
+      dueDate,
+    };
   });
 };
 
