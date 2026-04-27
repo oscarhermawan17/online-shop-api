@@ -1,31 +1,27 @@
 import prisma from '../../../config/prisma';
 import { AppError } from '../../../middlewares/error.middleware';
 import { CREDIT_EXCLUDED_STATUSES, getPaidCreditAmount, getRemainingCreditAmount } from '../../../utils/credit';
+import { populateVariantDescriptions } from '../../../utils/order-item';
 
 export const getMyCreditOrders = async (storeId: string, customerId: string) => {
-  const [orders, credit] = await Promise.all([
-    prisma.order.findMany({
-      where: { storeId, customerId, paymentMethod: 'credit' },
-      include: {
-        items: true,
-        paymentProof: true,
-        creditPayments: {
-          select: { id: true, amount: true, receivedAt: true },
-          orderBy: { receivedAt: 'asc' },
-        },
-        shippingAssignment: {
-          include: { shift: true },
-        },
+  const orders = await prisma.order.findMany({
+    where: { storeId, customerId, paymentMethod: 'credit' },
+    include: {
+      items: true,
+      paymentProof: true,
+      creditPayments: {
+        select: { id: true, amount: true, receivedAt: true },
+        orderBy: { receivedAt: 'asc' },
       },
-      orderBy: { createdAt: 'desc' },
-    }),
-    prisma.customerCredit.findFirst({
-      where: { storeId, customerId },
-      select: { termOfPayment: true },
-    }),
-  ]);
+      shippingAssignment: {
+        include: { shift: true },
+      },
+    },
+    orderBy: { createdAt: 'desc' },
+  });
 
-  const termOfPayment = credit?.termOfPayment ?? 0;
+  const allItems = await populateVariantDescriptions(orders.flatMap((o) => o.items));
+  const itemMap = new Map(allItems.map((item) => [item.id, item]));
 
   return orders.map((order) => {
     const paidAmount = getPaidCreditAmount(order.creditPayments);
@@ -35,11 +31,19 @@ export const getMyCreditOrders = async (storeId: string, customerId: string) => 
       creditSettledAt: order.creditSettledAt,
     });
 
+    const termOfPayment = order.termOfPaymentSnapshot ?? 0;
     const dueDate = termOfPayment > 0
       ? new Date(new Date(order.createdAt).getTime() + termOfPayment * 24 * 60 * 60 * 1000).toISOString()
       : null;
 
-    return { ...order, paidAmount, remainingAmount, termOfPayment, dueDate };
+    return {
+      ...order,
+      items: order.items.map((item) => itemMap.get(item.id) ?? item),
+      paidAmount,
+      remainingAmount,
+      termOfPayment,
+      dueDate,
+    };
   });
 };
 

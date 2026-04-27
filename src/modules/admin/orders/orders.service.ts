@@ -1,14 +1,22 @@
-import { OrderStatus } from '@prisma/client';
+import { OrderComplaintStatus, OrderStatus } from '@prisma/client';
 
 import prisma from '../../../config/prisma';
 import { AppError } from '../../../middlewares/error.middleware';
 import { getPaidCreditAmount, getRemainingCreditAmount, isCreditSettled } from '../../../utils/credit';
 import { restoreOrderStock } from '../../../utils/order-stock';
 import { toAdminOrderResponse } from './orders.mapper';
+import { populateVariantDescriptions } from '../../../utils/order-item';
+
+const OPEN_COMPLAINT_STATUSES: OrderComplaintStatus[] = ['open', 'accepted'];
 
 const adminOrderInclude = {
   items: true,
   paymentProof: true,
+  complaints: {
+    orderBy: {
+      createdAt: 'desc',
+    },
+  },
   shippingAssignment: {
     include: {
       shift: true,
@@ -45,7 +53,11 @@ export const listOrders = async (input: ListOrdersInput) => {
     orderBy: { createdAt: 'desc' },
   });
 
-  return orders.map(toAdminOrderResponse);
+  const allItems = await populateVariantDescriptions(orders.flatMap((o) => o.items));
+  const itemMap = new Map(allItems.map((i) => [i.id, i]));
+  const resolved = orders.map((o) => ({ ...o, items: o.items.map((i) => itemMap.get(i.id) ?? i) }));
+
+  return resolved.map(toAdminOrderResponse);
 };
 
 export const getOrder = async (storeId: string, orderId: string) => {
@@ -58,7 +70,8 @@ export const getOrder = async (storeId: string, orderId: string) => {
     throw new AppError('Order not found', 404);
   }
 
-  return toAdminOrderResponse(order);
+  const items = await populateVariantDescriptions(order.items);
+  return toAdminOrderResponse({ ...order, items });
 };
 
 export const confirmPayment = async (storeId: string, orderId: string) => {
@@ -163,11 +176,40 @@ export const updateOrderStatus = async (
           quantity: true,
         },
       },
+      complaints: {
+        where: {
+          status: { in: OPEN_COMPLAINT_STATUSES },
+        },
+        select: {
+          id: true,
+        },
+      },
     },
   });
 
   if (!existingOrder) {
     throw new AppError('Order not found', 404);
+  }
+
+  if (status === 'done') {
+    if (existingOrder.status !== 'shipped' && existingOrder.status !== 'done') {
+      throw new AppError('Pesanan hanya bisa diselesaikan dari status dikirim', 400);
+    }
+
+    if (existingOrder.complaints.length > 0) {
+      throw new AppError('Masih ada komplain aktif pada pesanan ini', 400);
+    }
+
+    const updated = await prisma.order.update({
+      where: { id: existingOrder.id },
+      data: {
+        adminCompletedAt: new Date(),
+        status: existingOrder.customerCompletedAt ? 'done' : 'shipped',
+      },
+      include: adminOrderInclude,
+    });
+
+    return toAdminOrderResponse(updated);
   }
 
   const shouldRestoreReservedStock = (
@@ -213,9 +255,113 @@ export const updateOrderStatus = async (
 
     return tx.order.update({
       where: { id: orderId },
-      data: { status },
+      data: {
+        status,
+        ...(status === 'shipped'
+          ? {
+              adminCompletedAt: null,
+              customerCompletedAt: null,
+            }
+          : {}),
+      },
       include: adminOrderInclude,
     });
+  });
+
+  return toAdminOrderResponse(updatedOrder);
+};
+
+export interface UpdateComplaintStatusInput {
+  status: 'accepted' | 'rejected' | 'resolved';
+  adminNote?: string;
+  adminId: string;
+}
+
+export const updateComplaintStatus = async (
+  storeId: string,
+  orderId: string,
+  complaintId: string,
+  input: UpdateComplaintStatusInput,
+) => {
+  const updatedOrder = await prisma.$transaction(async (tx) => {
+    const complaint = await tx.orderComplaint.findFirst({
+      where: {
+        id: complaintId,
+        orderId,
+        storeId,
+      },
+    });
+
+    if (!complaint) {
+      throw new AppError('Komplain tidak ditemukan', 404);
+    }
+
+    if (complaint.status === 'rejected' || complaint.status === 'resolved') {
+      throw new AppError('Komplain ini sudah ditutup', 400);
+    }
+
+    if (input.status === 'accepted' && complaint.status !== 'open') {
+      throw new AppError('Komplain hanya bisa diterima dari status baru', 400);
+    }
+
+    const now = new Date();
+    const adminNote = input.adminNote?.trim() ? input.adminNote.trim() : null;
+
+    await tx.orderComplaint.update({
+      where: { id: complaint.id },
+      data: {
+        status: input.status,
+        adminNote,
+        acceptedAt: input.status === 'accepted' ? now : complaint.acceptedAt,
+        acceptedByAdminId: input.status === 'accepted' ? input.adminId : complaint.acceptedByAdminId,
+        rejectedAt: input.status === 'rejected' ? now : complaint.rejectedAt,
+        rejectedByAdminId: input.status === 'rejected' ? input.adminId : complaint.rejectedByAdminId,
+        resolvedAt: input.status === 'resolved' ? now : complaint.resolvedAt,
+        resolvedByAdminId: input.status === 'resolved' ? input.adminId : complaint.resolvedByAdminId,
+      },
+    });
+
+    if (input.status === 'rejected' || input.status === 'resolved') {
+      const order = await tx.order.findFirst({
+        where: { id: orderId, storeId },
+        select: {
+          id: true,
+          status: true,
+          adminCompletedAt: true,
+          customerCompletedAt: true,
+        },
+      });
+
+      if (order && order.status === 'shipped' && order.adminCompletedAt && order.customerCompletedAt) {
+        const openComplaintCount = await tx.orderComplaint.count({
+          where: {
+            orderId,
+            storeId,
+            status: { in: OPEN_COMPLAINT_STATUSES },
+          },
+        });
+
+        if (openComplaintCount === 0) {
+          await tx.order.update({
+            where: { id: orderId },
+            data: {
+              status: 'done',
+            },
+          });
+        }
+      }
+    }
+
+    const order = await tx.order.findFirst({
+      where: { id: orderId, storeId },
+      include: adminOrderInclude,
+    });
+
+    if (!order) {
+      throw new AppError('Order not found', 404);
+    }
+
+    return order;
   });
 
   return toAdminOrderResponse(updatedOrder);
@@ -310,7 +456,11 @@ export const shipOrder = async (
 
     return tx.order.update({
       where: { id: order.id },
-      data: { status: 'shipped' },
+      data: {
+        status: 'shipped',
+        adminCompletedAt: null,
+        customerCompletedAt: null,
+      },
       include: adminOrderInclude,
     });
   });

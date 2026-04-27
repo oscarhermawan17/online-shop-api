@@ -61,6 +61,14 @@ const parseOrderStatusQuery = (value: unknown): OrderStatus | undefined => {
   return raw as OrderStatus;
 };
 
+const parseComplaintStatus = (value: unknown): 'accepted' | 'rejected' | 'resolved' => {
+  if (value === 'accepted' || value === 'rejected' || value === 'resolved') {
+    return value;
+  }
+
+  throw new AppError('Status komplain tidak valid', 400);
+};
+
 // ─── GET /admin/orders ────────────────────────────────────────────────────────
 
 export const listOrders = async (
@@ -159,6 +167,31 @@ export const updateOrderStatus = async (
       status,
     );
     sendSuccess(res, order, 'Order status updated successfully');
+  } catch (error) {
+    next(error);
+  }
+};
+
+// ─── PATCH /admin/orders/:id/complaints/:complaintId/status ───────────────────
+
+export const updateComplaintStatus = async (
+  req: AuthRequest,
+  res: Response,
+  next: NextFunction,
+): Promise<void> => {
+  try {
+    const { status, adminNote } = req.body;
+    const order = await ordersService.updateComplaintStatus(
+      req.user!.storeId,
+      req.params.id as string,
+      req.params.complaintId as string,
+      {
+        status: parseComplaintStatus(status),
+        adminNote,
+        adminId: req.user!.adminId,
+      },
+    );
+    sendSuccess(res, order, 'Status komplain berhasil diperbarui');
   } catch (error) {
     next(error);
   }

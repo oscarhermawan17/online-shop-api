@@ -19,5 +19,6 @@ router.patch('/:id/confirm', ordersController.confirmPayment);
 router.patch('/:id/settle-credit', ordersController.settleCredit);
 router.patch('/:id/ship', ordersController.shipOrder);
 router.patch('/:id/status', ordersController.updateOrderStatus);
+router.patch('/:id/complaints/:complaintId/status', ordersController.updateComplaintStatus);
 
 export default router;
