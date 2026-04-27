@@ -62,6 +62,7 @@ export const listCredits = async (storeId: string) => {
       hasAccount: !!customer.password,
       createdAt: customer.createdAt,
       creditLimit,
+      termOfPayment: customer.credit?.termOfPayment ?? 0,
       outstandingCredit,
       remainingCredit: Math.max(creditLimit - outstandingCredit, 0),
       creditUpdatedAt: customer.credit?.updatedAt ?? null,
@@ -73,15 +74,20 @@ export interface UpsertCreditInput {
   storeId: string;
   customerId: string;
   creditLimit: number;
+  termOfPayment: number;
 }
 
 export const upsertCreditLimit = async (
   input: UpsertCreditInput,
 ) => {
-  const { storeId, customerId, creditLimit } = input;
+  const { storeId, customerId, creditLimit, termOfPayment } = input;
 
   if (!Number.isInteger(creditLimit) || creditLimit < 0) {
     throw new AppError('Limit credit harus berupa angka bulat 0 atau lebih', 400);
+  }
+
+  if (!Number.isInteger(termOfPayment) || termOfPayment < 0) {
+    throw new AppError('TOP harus berupa angka bulat 0 atau lebih', 400);
   }
 
   const customer = await prisma.customer.findFirst({
@@ -113,13 +119,16 @@ export const upsertCreditLimit = async (
       storeId,
       customerId,
       creditLimit,
+      termOfPayment,
     },
     update: {
       creditLimit,
+      termOfPayment,
     },
     select: {
       id: true,
       creditLimit: true,
+      termOfPayment: true,
       updatedAt: true,
     },
   });
@@ -159,6 +168,7 @@ export const upsertCreditLimit = async (
     customerPhone: customer.phone,
     creditId: credit.id,
     creditLimit: credit.creditLimit,
+    termOfPayment: credit.termOfPayment,
     outstandingCredit: usedCredit,
     remainingCredit: Math.max(credit.creditLimit - usedCredit, 0),
     updatedAt: credit.updatedAt,
