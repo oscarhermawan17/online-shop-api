@@ -297,10 +297,12 @@ export const checkout = async (input: CheckoutInput) => {
         ...rule,
         source: 'variant' as const,
       })),
-      ...product.productDiscountRules.map((rule) => ({
-        ...rule,
-        source: 'product' as const,
-      })),
+      ...product.productDiscountRules
+        .filter((rule) => rule.targetVariantIds.length === 0 || rule.targetVariantIds.includes(variant.id))
+        .map((rule) => ({
+          ...rule,
+          source: 'product' as const,
+        })),
     ];
 
     const pricing = resolveVariantDiscount(combinedRules, {

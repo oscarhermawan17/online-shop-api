@@ -189,11 +189,13 @@ const formatProductForPublic = (product: ProductWithRelations, isWholesale: bool
         ...rule,
         source: 'variant' as const,
       })),
-      ...product.productDiscountRules.map((rule) => ({
-        ...rule,
-        source: 'product' as const,
-        variantId: variant.id,
-      })),
+      ...product.productDiscountRules
+        .filter((rule) => rule.targetVariantIds.length === 0 || rule.targetVariantIds.includes(variant.id))
+        .map((rule) => ({
+          ...rule,
+          source: 'product' as const,
+          variantId: variant.id,
+        })),
     ];
 
     const pricing = resolveVariantDiscount(combinedRules, {
