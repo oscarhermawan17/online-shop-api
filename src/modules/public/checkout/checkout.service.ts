@@ -379,6 +379,8 @@ export const checkout = async (input: CheckoutInput) => {
   const finalShippingCost = qualifiesForFreeShipping ? 0 : (shippingCost ?? 0);
   const finalTotalAmount = totalAmount + finalShippingCost;
 
+  let termOfPaymentSnapshot = 0;
+
   if (paymentMethod === 'credit') {
     const customerCredit = await prisma.customerCredit.findFirst({
       where: {
@@ -392,6 +394,8 @@ export const checkout = async (input: CheckoutInput) => {
     }
 
     const outstandingCredit = await getOutstandingCreditTotal(storeId, customer.id);
+
+    termOfPaymentSnapshot = customerCredit.termOfPayment ?? 0;
 
     if (outstandingCredit + finalTotalAmount > customerCredit.creditLimit) {
       throw new AppError(
@@ -414,6 +418,7 @@ export const checkout = async (input: CheckoutInput) => {
       publicOrderId,
       status: initialStatus,
       paymentMethod,
+      termOfPaymentSnapshot,
       customerName: customerName || customer.name || customerPhone,
       customerPhone,
       customerAddress: customerAddress || null,

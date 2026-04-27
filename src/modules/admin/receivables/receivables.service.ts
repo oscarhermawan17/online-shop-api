@@ -15,13 +15,6 @@ const receivableInclude = {
     },
   },
   items: true,
-  customer: {
-    include: {
-      credit: {
-        select: { termOfPayment: true },
-      },
-    },
-  },
 } as const;
 
 const toReceivableResponse = (
@@ -35,6 +28,7 @@ const toReceivableResponse = (
     status: string;
     creditSettledAt: Date | null;
     shippingCost: number;
+    termOfPaymentSnapshot: number;
     creditPayments: {
       id: string;
       amount: number;
@@ -52,9 +46,6 @@ const toReceivableResponse = (
       discountRuleName: string | null;
       imageUrl?: string | null;
     }[];
-    customer: {
-      credit: { termOfPayment: number } | null;
-    };
   },
 ) => {
   const paidAmount = getPaidCreditAmount(order.creditPayments);
@@ -69,7 +60,7 @@ const toReceivableResponse = (
     creditSettledAt: order.creditSettledAt,
   });
 
-  const termOfPayment = order.customer.credit?.termOfPayment ?? 0;
+  const termOfPayment = order.termOfPaymentSnapshot ?? 0;
   const dueDate = termOfPayment > 0
     ? new Date(order.createdAt.getTime() + termOfPayment * 24 * 60 * 60 * 1000)
     : null;

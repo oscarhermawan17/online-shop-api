@@ -300,6 +300,7 @@ model Order {
   updatedAt          DateTime                 @updatedAt
   creditSettledAt    DateTime?
   paymentMethod      PaymentMethod            @default(bank_transfer)
+  termOfPaymentSnapshot Int      @default(0)
   creditPayments     CreditPayment[]
   items              OrderItem[]
   shippingAssignment OrderShippingAssignment?
