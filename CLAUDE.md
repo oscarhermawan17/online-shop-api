@@ -10,7 +10,9 @@
 
 ## Database (.env)
 
-Only `DATABASE_URL` is used — no `DIRECT_URL`:
+Only `DATABASE_URL` is used — no `DIRECT_URL`.
+
+### Prod (Supabase cloud)
 
 ```
 # For dev & production (pooler port 6543) — works on Biznet WiFi
@@ -20,7 +22,24 @@ DATABASE_URL=postgresql://postgres.xceemlzendhddaghwerv:...@aws-1-ap-southeast-1
 # DATABASE_URL=postgresql://postgres:...@db.xceemlzendhddaghwerv.supabase.co:5432/postgres
 ```
 
-**Push/seed workflow:** switch to Telkomsel → uncomment direct URL → run push/seed → switch back to pooler.
+**Push/seed workflow (prod):** switch to Telkomsel → uncomment direct URL → run push/seed → switch back to pooler.
+
+### Stg (local Docker postgres)
+
+Stg uses a local PostgreSQL container. No network switching needed.
+
+```bash
+# From local-stg/ (docker compose must be running)
+docker compose exec api-stg npx prisma db push
+docker compose exec api-stg npm run prisma:seed
+
+# Fresh reset:
+docker compose down -v && docker compose up -d
+docker compose exec api-stg npx prisma db push
+docker compose exec api-stg npm run prisma:seed
+```
+
+Stg `DATABASE_URL=postgresql://postgres:postgres@postgres:5432/online_shop_stg` (internal Docker hostname).
 
 Commands:
 - Reset DB: `npx prisma db push --force-reset`
