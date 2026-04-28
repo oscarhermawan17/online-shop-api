@@ -88,8 +88,13 @@ export interface UpdateVariantDiscountRuleInput {
   priority?: number;
 }
 
-export type CreateProductDiscountRuleInput = CreateVariantDiscountRuleInput;
-export type UpdateProductDiscountRuleInput = UpdateVariantDiscountRuleInput;
+export interface CreateProductDiscountRuleInput extends CreateVariantDiscountRuleInput {
+  variantIds?: string[];
+}
+
+export interface UpdateProductDiscountRuleInput extends UpdateVariantDiscountRuleInput {
+  variantIds?: string[];
+}
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -910,6 +915,22 @@ export const listProductDiscountRules = async (
   });
 };
 
+const validateProductRuleVariantIds = async (
+  productId: string,
+  variantIds: string[],
+) => {
+  if (variantIds.length === 0) return;
+
+  const variants = await prisma.variant.findMany({
+    where: { productId, id: { in: variantIds } },
+    select: { id: true },
+  });
+
+  if (variants.length !== variantIds.length) {
+    throw new AppError('One or more variantIds are invalid for this product', 400);
+  }
+};
+
 export const createProductDiscountRule = async (
   storeId: string,
   productId: string,
@@ -919,6 +940,9 @@ export const createProductDiscountRule = async (
 
   const normalized = normalizeRuleInput(data);
   validateRuleInput(normalized, false);
+
+  const targetVariantIds = data.variantIds ?? [];
+  await validateProductRuleVariantIds(productId, targetVariantIds);
 
   return prisma.productDiscountRule.create({
     data: {
@@ -934,6 +958,7 @@ export const createProductDiscountRule = async (
       customerType: normalized.customerType ?? null,
       isActive: normalized.isActive ?? true,
       priority: normalized.priority ?? 0,
+      targetVariantIds,
     },
   });
 };
@@ -975,6 +1000,11 @@ export const updateProductDiscountRule = async (
 
   validateRuleInput(merged, false);
 
+  const targetVariantIds = data.variantIds !== undefined ? data.variantIds : existing.targetVariantIds;
+  if (data.variantIds !== undefined) {
+    await validateProductRuleVariantIds(productId, data.variantIds);
+  }
+
   return prisma.productDiscountRule.update({
     where: { id: existing.id },
     data: {
@@ -988,6 +1018,7 @@ export const updateProductDiscountRule = async (
       customerType: normalized.customerType,
       isActive: normalized.isActive,
       priority: normalized.priority,
+      targetVariantIds,
     },
   });
 };

@@ -25,11 +25,13 @@ export const upsertCreditLimit = async (
   try {
     const { customerId } = req.params as { customerId: string };
     const creditLimit = Number(req.body.creditLimit);
+    const termOfPayment = Number(req.body.termOfPayment ?? 0);
 
     const result = await creditService.upsertCreditLimit({
       storeId: req.user!.storeId,
       customerId,
       creditLimit,
+      termOfPayment,
     });
 
     sendSuccess(res, result, 'Customer credit updated successfully');

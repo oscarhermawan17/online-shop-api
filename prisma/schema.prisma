@@ -52,6 +52,7 @@ model Store {
   orderItems                             OrderItem[]
   shippingAssignments                    OrderShippingAssignment[]
   orders                                 Order[]
+  orderComplaints                        OrderComplaint[]
   paymentProofs                          PaymentProof[]
   productDiscounts                       ProductDiscount[]
   productDiscountRules                   ProductDiscountRule[]
@@ -213,23 +214,24 @@ model VariantDiscountRule {
 }
 
 model ProductDiscountRule {
-  id           String              @id @default(uuid())
-  storeId      String
-  productId    String
-  name         String?
-  triggerType  DiscountTriggerType
-  minThreshold Int
-  maxThreshold Int?
-  valueType    DiscountValueType
-  value        Int
-  applyMode    DiscountApplyMode
-  customerType CustomerType?
-  isActive     Boolean             @default(true)
-  priority     Int                 @default(0)
-  createdAt    DateTime            @default(now())
-  updatedAt    DateTime            @updatedAt
-  product      Product             @relation(fields: [productId], references: [id], onDelete: Cascade)
-  store        Store               @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  id               String              @id @default(uuid())
+  storeId          String
+  productId        String
+  name             String?
+  triggerType      DiscountTriggerType
+  minThreshold     Int
+  maxThreshold     Int?
+  valueType        DiscountValueType
+  value            Int
+  applyMode        DiscountApplyMode
+  customerType     CustomerType?
+  isActive         Boolean             @default(true)
+  priority         Int                 @default(0)
+  targetVariantIds String[]            @default([])
+  createdAt        DateTime            @default(now())
+  updatedAt        DateTime            @updatedAt
+  product          Product             @relation(fields: [productId], references: [id], onDelete: Cascade)
+  store            Store               @relation(fields: [storeId], references: [id], onDelete: Cascade)
 
   @@index([storeId])
   @@index([productId])
@@ -251,9 +253,10 @@ model Customer {
   type      CustomerType      @default(base)
   avatarUrl String?
   addresses CustomerAddress[]
-  credit    CustomerCredit?
-  store     Store             @relation(fields: [storeId], references: [id], onDelete: Cascade)
-  orders    Order[]
+  credit          CustomerCredit?
+  orderComplaints OrderComplaint[]
+  store           Store             @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  orders          Order[]
 
   @@unique([storeId, phone])
   @@index([storeId])
@@ -299,13 +302,17 @@ model Order {
   createdAt          DateTime                 @default(now())
   updatedAt          DateTime                 @updatedAt
   creditSettledAt    DateTime?
-  paymentMethod      PaymentMethod            @default(bank_transfer)
+  paymentMethod         PaymentMethod            @default(bank_transfer)
+  termOfPaymentSnapshot Int                      @default(0)
+  adminCompletedAt      DateTime?
+  customerCompletedAt   DateTime?
   creditPayments     CreditPayment[]
   items              OrderItem[]
   shippingAssignment OrderShippingAssignment?
   customer           Customer                 @relation(fields: [customerId], references: [id])
   store              Store                    @relation(fields: [storeId], references: [id], onDelete: Cascade)
   paymentProof       PaymentProof?
+  complaints         OrderComplaint[]
 
   @@index([storeId])
   @@index([customerId])
@@ -313,14 +320,15 @@ model Order {
 }
 
 model CustomerCredit {
-  id          String   @id @default(uuid())
-  storeId     String
-  customerId  String   @unique
-  creditLimit Int      @default(0)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-  customer    Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
-  store       Store    @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  id              String   @id @default(uuid())
+  storeId         String
+  customerId      String   @unique
+  creditLimit     Int      @default(0)
+  termOfPayment   Int      @default(0)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  customer        Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  store           Store    @relation(fields: [storeId], references: [id], onDelete: Cascade)
 
   @@index([storeId])
   @@map("customer_credits")
@@ -441,6 +449,34 @@ model OrderShippingAssignment {
   @@map("order_shipping_assignments")
 }
 
+model OrderComplaint {
+  id                String               @id @default(uuid())
+  storeId           String
+  orderId           String
+  customerId        String
+  comment           String
+  evidenceImageUrls Json
+  status            OrderComplaintStatus @default(open)
+  adminNote         String?
+  createdAt         DateTime             @default(now())
+  updatedAt         DateTime             @updatedAt
+  acceptedAt        DateTime?
+  rejectedAt        DateTime?
+  resolvedAt        DateTime?
+  acceptedByAdminId String?
+  rejectedByAdminId String?
+  resolvedByAdminId String?
+  customer          Customer             @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  order             Order                @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  store             Store                @relation(fields: [storeId], references: [id], onDelete: Cascade)
+
+  @@index([storeId])
+  @@index([orderId])
+  @@index([customerId])
+  @@index([storeId, status, createdAt])
+  @@map("order_complaints")
+}
+
 model Admin {
   id                    String          @id @default(uuid())
   storeId               String
@@ -540,6 +576,13 @@ enum OrderStatus {
   done
   cancelled
   expired_unpaid
+}
+
+enum OrderComplaintStatus {
+  open
+  accepted
+  rejected
+  resolved
 }
 
 enum PaymentMethod {
