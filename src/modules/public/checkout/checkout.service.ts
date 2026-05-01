@@ -330,29 +330,6 @@ export const checkout = async (input: CheckoutInput) => {
         .join(', ')
       : (!variant.isDefault && variant.name ? variant.name : null);
 
-    const updatedVariant = await prisma.variant.update({
-      where: { id: variant.id },
-      data: { stock: { decrement: item.quantity } },
-      select: {
-        id: true,
-        productId: true,
-        stock: true,
-      },
-    });
-
-    await recordStockMovement(prisma, {
-      storeId,
-      productId: updatedVariant.productId,
-      variantId: updatedVariant.id,
-      stockStatus: 'out',
-      quantity: item.quantity,
-      category: 'sale',
-      balanceAfter: updatedVariant.stock,
-      referenceType: 'checkout',
-      referenceId: publicOrderId,
-      notes: 'Pengurangan stok dari proses checkout',
-    });
-
     orderItems.push({
       variantId: variant.id,
       productName: product.name,
@@ -422,47 +399,103 @@ export const checkout = async (input: CheckoutInput) => {
     : null;
   const initialStatus = paymentMethod === 'credit' ? 'paid' : 'pending_payment';
 
-  const order = await prisma.order.create({
-    data: {
-      storeId,
-      customerId: customer.id,
-      publicOrderId,
-      status: initialStatus,
-      paymentMethod,
-      termOfPaymentSnapshot,
-      customerName: customerName || customer.name || customerPhone,
-      customerPhone,
-      customerAddress: customerAddress || null,
-      deliveryMethod: deliveryMethod || null,
-      notes: notes || null,
-      shippingCost: finalShippingCost,
-      totalAmount: finalTotalAmount,
-      creditSettledAt: null,
-      expiresAt,
-      items: {
-        createMany: {
-          data: orderItems.map((item) => ({
-            variantId: item.variantId,
-            productName: item.productName,
-            variantDescription: item.variantDescription,
-            price: item.price,
-            quantity: item.quantity,
-            storeId,
-            ...(supportsOrderItemDiscountSnapshot
-              ? {
-                originalPrice: item.originalPrice,
-                discountAmount: item.discountAmount,
-                discountRuleName: item.discountRuleName,
-              }
-              : {}),
-          })),
+  const order = await prisma.$transaction(async (tx) => {
+    for (const item of orderItems) {
+      if (!item.variantId) {
+        continue;
+      }
+
+      const stockUpdate = await tx.variant.updateMany({
+        where: {
+          id: item.variantId,
+          storeId,
+          stock: {
+            gte: item.quantity,
+          },
+        },
+        data: {
+          stock: {
+            decrement: item.quantity,
+          },
+        },
+      });
+
+      if (stockUpdate.count === 0) {
+        throw new AppError(
+          `Insufficient stock for variant: ${item.variantId}`,
+          400,
+        );
+      }
+
+      const updatedVariant = await tx.variant.findUnique({
+        where: { id: item.variantId },
+        select: {
+          id: true,
+          productId: true,
+          stock: true,
+        },
+      });
+
+      if (!updatedVariant) {
+        throw new AppError(`Variant not found: ${item.variantId}`, 404);
+      }
+
+      await recordStockMovement(tx, {
+        storeId,
+        productId: updatedVariant.productId,
+        variantId: updatedVariant.id,
+        stockStatus: 'out',
+        quantity: item.quantity,
+        category: 'sale',
+        balanceAfter: updatedVariant.stock,
+        referenceType: 'checkout',
+        referenceId: publicOrderId,
+        notes: 'Pengurangan stok dari proses checkout',
+      });
+    }
+
+    return tx.order.create({
+      data: {
+        storeId,
+        customerId: customer.id,
+        publicOrderId,
+        status: initialStatus,
+        paymentMethod,
+        termOfPaymentSnapshot,
+        customerName: customerName || customer.name || customerPhone,
+        customerPhone,
+        customerAddress: customerAddress || null,
+        deliveryMethod: deliveryMethod || null,
+        notes: notes || null,
+        shippingCost: finalShippingCost,
+        totalAmount: finalTotalAmount,
+        creditSettledAt: null,
+        expiresAt,
+        items: {
+          createMany: {
+            data: orderItems.map((item) => ({
+              variantId: item.variantId,
+              productName: item.productName,
+              variantDescription: item.variantDescription,
+              price: item.price,
+              quantity: item.quantity,
+              storeId,
+              ...(supportsOrderItemDiscountSnapshot
+                ? {
+                  originalPrice: item.originalPrice,
+                  discountAmount: item.discountAmount,
+                  discountRuleName: item.discountRuleName,
+                }
+                : {}),
+            })),
+          },
         },
       },
-    },
-    include: {
-      customer: true,
-      items: true,
-    },
+      include: {
+        customer: true,
+        items: true,
+      },
+    });
   });
 
   return {
