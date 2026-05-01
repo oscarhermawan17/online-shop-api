@@ -22,6 +22,29 @@ const parseBooleanQuery = (value: unknown) => {
   return value === 'true' || value === '1';
 };
 
+const parseStringArrayQuery = (value: unknown) => {
+  const values = Array.isArray(value) ? value : value ? [value] : [];
+  const seen = new Set<string>();
+
+  return values
+    .filter((item): item is string => typeof item === 'string')
+    .flatMap((item) => item.split(','))
+    .map((item) => item.trim())
+    .filter((item) => {
+      if (!item) {
+        return false;
+      }
+
+      const normalizedItem = item.toLowerCase();
+      if (seen.has(normalizedItem)) {
+        return false;
+      }
+
+      seen.add(normalizedItem);
+      return true;
+    });
+};
+
 const resolveIsWholesaleCustomer = async (req: CustomerAuthRequest): Promise<boolean> => {
   if (!req.customer?.customerId) {
     return false;
@@ -52,7 +75,7 @@ export const listProducts = async (
   try {
     const storeId = req.query.storeId as string | undefined;
     const query = req.query.q as string | undefined;
-    const category = req.query.category as string | undefined;
+    const category = parseStringArrayQuery(req.query.category);
     const page = parseOptionalNumberQuery(req.query.page);
     const limit = parseOptionalNumberQuery(req.query.limit);
     const minPrice = parseOptionalNumberQuery(req.query.minPrice);

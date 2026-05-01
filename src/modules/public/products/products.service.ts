@@ -14,7 +14,7 @@ type ProductSuggestionType = 'product' | 'category' | 'unit';
 export interface ListProductsInput {
   storeId?: string;
   query?: string;
-  category?: string;
+  category?: string | string[];
   minPrice?: number;
   maxPrice?: number;
   promoOnly?: boolean;
@@ -37,22 +37,27 @@ const getSellableVariants = (variants: ProductWithRelations['variants']) => {
 const buildProductSearchWhere = (
   storeId?: string,
   query?: string,
-  category?: string,
+  category?: string | string[],
 ): Prisma.ProductWhereInput => {
   const normalizedQuery = query?.trim();
-  const normalizedCategory = category?.trim();
+  const normalizedCategories = (Array.isArray(category) ? category : category ? [category] : [])
+    .flatMap((item) => item.split(','))
+    .map((item) => item.trim())
+    .filter(Boolean);
 
   return {
     ...(storeId ? { storeId } : {}),
     isActive: true,
-    ...(normalizedCategory
+    ...(normalizedCategories.length > 0
       ? {
           categories: {
             some: {
-              name: {
-                equals: normalizedCategory,
-                mode: 'insensitive',
-              },
+              OR: normalizedCategories.map((categoryName) => ({
+                name: {
+                  equals: categoryName,
+                  mode: 'insensitive',
+                },
+              })),
             },
           },
         }
