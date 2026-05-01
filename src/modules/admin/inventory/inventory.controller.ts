@@ -46,16 +46,32 @@ const parseDateBody = (value: unknown, fieldName: string): Date | undefined => {
   }
 
   if (typeof value !== 'string') {
-    throw new AppError(`Format ${fieldName} harus YYYY-MM-DD`, 400);
+    throw new AppError(`Format ${fieldName} harus YYYY-MM-DD atau ISO datetime`, 400);
   }
 
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) {
-    throw new AppError(`Format ${fieldName} harus YYYY-MM-DD`, 400);
+  if (/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+    const [year, month, day] = value.split('-').map(Number);
+    const now = new Date();
+    const parsed = new Date(
+      year,
+      month - 1,
+      day,
+      now.getHours(),
+      now.getMinutes(),
+      now.getSeconds(),
+      now.getMilliseconds(),
+    );
+
+    if (Number.isNaN(parsed.getTime())) {
+      throw new AppError(`${fieldName} tidak valid`, 400);
+    }
+
+    return parsed;
   }
 
-  const parsed = new Date(`${value}T00:00:00.000Z`);
+  const parsed = new Date(value);
   if (Number.isNaN(parsed.getTime())) {
-    throw new AppError(`${fieldName} tidak valid`, 400);
+    throw new AppError(`Format ${fieldName} harus YYYY-MM-DD atau ISO datetime`, 400);
   }
 
   return parsed;
