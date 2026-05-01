@@ -10,5 +10,6 @@ const router = Router();
 router.post('/checkout', optionalCustomerAuth, checkoutController.checkout);
 router.post('/payment-proof', checkoutController.uploadPaymentProof);
 router.get('/order/:publicOrderId', checkoutController.getOrderStatus);
+router.patch('/order/:publicOrderId/complete', checkoutController.completeOrder);
 
 export default router;
