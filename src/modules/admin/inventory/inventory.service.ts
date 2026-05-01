@@ -132,7 +132,7 @@ export const listStockMovements = async (input: ListStockMovementsInput) => {
         },
       },
     },
-    orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
+    orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
   });
 
   const checkoutReferenceIds = Array.from(new Set(
