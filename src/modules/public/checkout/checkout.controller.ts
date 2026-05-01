@@ -54,3 +54,18 @@ export const getOrderStatus = async (
     next(error);
   }
 };
+
+// ─── PATCH /order/:publicOrderId/complete ─────────────────────────────────────
+
+export const completeOrder = async (
+  req: Request,
+  res: Response,
+  next: NextFunction,
+): Promise<void> => {
+  try {
+    const result = await checkoutService.completeOrder(req.params.publicOrderId as string);
+    sendSuccess(res, result, 'Konfirmasi selesai pesanan berhasil disimpan');
+  } catch (error) {
+    next(error);
+  }
+};

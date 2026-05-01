@@ -1,4 +1,4 @@
-import { PaymentMethod, Prisma } from '@prisma/client';
+import { OrderComplaintStatus, PaymentMethod, Prisma } from '@prisma/client';
 
 import prisma from '../../../config/prisma';
 import { AppError } from '../../../middlewares/error.middleware';
@@ -43,6 +43,7 @@ const formatRupiah = (amount: number): string =>
   }).format(amount);
 
 const ORDER_ITEM_SNAPSHOT_FIELDS = ['originalPrice', 'discountAmount', 'discountRuleName'] as const;
+const OPEN_COMPLAINT_STATUSES: OrderComplaintStatus[] = ['open', 'accepted'];
 
 const supportsOrderItemDiscountSnapshot = (() => {
   const orderItemModel = Prisma.dmmf.datamodel.models.find((model) => model.name === 'OrderItem');
@@ -60,6 +61,14 @@ const generatePublicOrderId = (): string => {
   const timestamp = Date.now().toString(36).toUpperCase();
   const random = Math.random().toString(36).substring(2, 6).toUpperCase();
   return `ORD-${timestamp}-${random}`;
+};
+
+const parseEvidenceImageUrls = (value: Prisma.JsonValue): string[] => {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return value.filter((item): item is string => typeof item === 'string');
 };
 
 const resolvePaymentMethod = (value?: string): PaymentMethod => {
@@ -559,6 +568,11 @@ export const getOrderStatus = async (publicOrderId: string) => {
           shift: true,
         },
       },
+      complaints: {
+        orderBy: {
+          createdAt: 'desc',
+        },
+      },
       store: {
         select: {
           name: true,
@@ -590,9 +604,15 @@ export const getOrderStatus = async (publicOrderId: string) => {
     shippingCost: order.shippingCost,
     totalAmount: order.totalAmount,
     creditSettledAt: order.creditSettledAt,
+    adminCompletedAt: order.adminCompletedAt,
+    customerCompletedAt: order.customerCompletedAt,
     expiresAt: order.expiresAt,
     createdAt: order.createdAt,
     items,
+    complaints: order.complaints.map((complaint) => ({
+      ...complaint,
+      evidenceImageUrls: parseEvidenceImageUrls(complaint.evidenceImageUrls),
+    })),
     paymentProof: order.paymentProof,
     shippingAssignment: order.shippingAssignment
       ? {
@@ -609,4 +629,50 @@ export const getOrderStatus = async (publicOrderId: string) => {
       : null,
     store: order.store,
   };
+};
+
+export const completeOrder = async (publicOrderId: string) => {
+  const order = await prisma.order.findUnique({
+    where: { publicOrderId },
+    include: {
+      complaints: {
+        where: {
+          status: {
+            in: OPEN_COMPLAINT_STATUSES,
+          },
+        },
+        select: {
+          id: true,
+        },
+      },
+    },
+  });
+
+  if (!order) {
+    throw new AppError('Order not found', 404);
+  }
+
+  if (order.status !== 'shipped' && order.status !== 'done') {
+    throw new AppError('Order hanya bisa diselesaikan setelah dikirim', 400);
+  }
+
+  if (order.complaints.length > 0) {
+    throw new AppError('Tidak bisa menyelesaikan pesanan saat komplain masih aktif', 400);
+  }
+
+  return prisma.order.update({
+    where: {
+      id: order.id,
+    },
+    data: {
+      customerCompletedAt: order.customerCompletedAt ?? new Date(),
+      status: order.adminCompletedAt ? 'done' : 'shipped',
+    },
+    select: {
+      publicOrderId: true,
+      status: true,
+      adminCompletedAt: true,
+      customerCompletedAt: true,
+    },
+  });
 };
