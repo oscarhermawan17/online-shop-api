@@ -2,9 +2,9 @@
 
 ## Stack
 - Node.js + Express v5 + TypeScript + Prisma ORM
-- Database: Supabase (PostgreSQL), always online — same DB for local dev and production
-- Port: **4000**
-- Structure: `src/modules/{public,customer,admin}/` + `src/middlewares/`
+- Database: Supabase (PostgreSQL) for prod; Docker PostgreSQL for stg
+- Port: **4000** (prod) / **8000** (stg)
+- Structure: `src/modules/{public,customer,admin}/` + `src/middlewares/` + `src/utils/`
 
 ---
 
@@ -72,28 +72,33 @@ All models have `storeId` except Store, HealthCheck, and VariantOptionValue (int
 
 | Model | Purpose |
 |---|---|
-| Store | Tenant config (bank details, QRIS, WhatsApp) |
+| Store | Tenant config (QRIS, minimum orders, free shipping thresholds) — bank accounts are in StoreBankAccount |
+| StoreBankAccount | Multiple bank accounts per store; fields: bankName (BankName enum), accountNumber, accountHolder, sortOrder; onDelete Cascade from Store |
 | Admin | Admin accounts; roles: owner / manager / staff |
-| Customer | Store-scoped customers; password nullable (guest); `type`: base (guest pricing) or wholesale (retail pricing) |
-| CustomerAddress | Saved delivery addresses |
-| Product | Has basePrice + wholesalePrice |
+| Customer | Store-scoped customers; password nullable (guest); `type`: base (guest pricing) or wholesale (retail pricing); `avatarUrl` nullable |
+| CustomerAddress | Saved delivery addresses with optional GPS coords |
+| Product | Has basePrice + wholesalePrice; optional unitId + categories (many-to-many) |
 | ProductImage | Gallery images |
 | ProductOption | Option types (e.g. "Size", "Color") |
 | ProductOptionValue | Option values (e.g. "M", "Black") |
-| Variant | Sellable SKU; priceOverride, wholesalePriceOverride, stock |
+| Variant | Sellable SKU; priceOverride, wholesalePriceOverride, stock, imageUrl |
 | VariantOptionValue | Join: Variant ↔ ProductOptionValue |
-| Order | status enum, expiresAt (30mins), deliveryMethod (pickup/delivery) |
-| OrderItem | Price/name snapshot; includes variantId for stock restoration on expiry |
+| VariantDiscountRule | Per-variant discount rules: triggerType (quantity/line_subtotal), valueType (percentage/fixed_amount), applyMode (per_item/line_total), customerType filter, priority, isActive |
+| ProductDiscountRule | Same structure as VariantDiscountRule but scoped to a product; can target specific variantIds via `targetVariantIds[]` |
+| ProductDiscount | Legacy simple discount: normalDiscount + normalDiscountActive (guest), retailDiscount + retailDiscountActive (ritel); startDate/endDate nullable |
+| Order | status enum, expiresAt (30mins for bank transfer; null for credit), paymentMethod, deliveryMethod, termOfPaymentSnapshot, adminCompletedAt, customerCompletedAt, creditSettledAt |
+| OrderItem | Price/name snapshot; discountAmount, discountRuleName, originalPrice for discount tracking |
 | PaymentProof | Bank transfer image upload |
 | ShippingZone | District → cost mapping |
 | ShippingDriver | Courier master list |
 | ShippingShift | Delivery shift templates |
 | OrderShippingAssignment | Courier dispatch record per order |
-| ProductDiscount | One per product; normalDiscount + normalDiscountActive (guest), retailDiscount + retailDiscountActive (ritel); startDate/endDate nullable (future use) |
-| CarouselSlide | Promotional banner slides; title, subtitle, badge, imageUrl, backgroundColor, isActive, sortOrder; max 10 per store |
+| OrderComplaint | Customer complaint per order; evidenceImageUrls (JSON), status: open/accepted/rejected/resolved; admin lifecycle fields |
+| StockMovement | Ledger of every stock in/out event; category: initial_stock/add_stock/sale/restore; balanceAfter tracks running stock; linked to Admin, Product, Variant |
+| CarouselSlide | Promotional banner slides; title, subtitle, badge, imageUrl, backgroundColor, showText, isActive, sortOrder; max 10 per store |
 | Category | Product categories with icon; many-to-many with Product |
 | Unit | Product unit of measure (e.g. pcs, kg); one-to-many with Product |
-| CustomerCredit | Per-customer credit limit (admin-managed); one-to-one with Customer |
+| CustomerCredit | Per-customer credit limit + termOfPayment (days); admin-managed; one-to-one with Customer |
 | CreditPayment | Partial/full payment records against a credit order; many-to-one with Order |
 
 ---
@@ -113,7 +118,7 @@ All models have `storeId` except Store, HealthCheck, and VariantOptionValue (int
 ```
 GET  /api/health
 GET  /api/store
-GET  /api/products              (optional customer auth → wholesale pricing)
+GET  /api/products              (optional customer auth → wholesale pricing + discount rules)
 GET  /api/products/:id
 GET  /api/categories            (public category list)
 GET  /api/carousel              (active slides only)
@@ -128,6 +133,8 @@ POST /api/customer-auth/login   (customer login)
 ### Customer (requireCustomerAuth)
 ```
 GET    /api/customer/orders
+PATCH  /api/customer/orders/:id/complete        (mark order as done by customer)
+POST   /api/customer/orders/:id/complaints      (file complaint with comment + evidence images)
 GET    /api/customer/addresses
 POST   /api/customer/addresses
 PATCH  /api/customer/addresses/:id
@@ -140,9 +147,11 @@ GET    /api/customer/credit
 # Store — manager+
 GET   /api/admin/store
 PATCH /api/admin/store
+PUT   /api/admin/store/bank-accounts   (full replace of all bank accounts)
 
 # Products — staff+
 GET/POST                          /api/admin/products
+GET                               /api/admin/products/export/inventory   (XLS export of all variant stock)
 GET/PATCH/DELETE                  /api/admin/products/:id
 POST/DELETE                       /api/admin/products/:id/images
 POST/DELETE                       /api/admin/products/:id/images/:imageId
@@ -151,18 +160,34 @@ POST/DELETE                       /api/admin/products/:id/options/:optionId
 POST                              /api/admin/products/:id/variants
 PATCH/DELETE                      /api/admin/products/:id/variants/:variantId
 
+# Variant Discount Rules — staff+
+GET/POST                          /api/admin/products/:id/variants/:variantId/discount-rules
+PATCH/DELETE                      /api/admin/products/:id/variants/:variantId/discount-rules/:ruleId
+
+# Product Discount Rules — staff+
+GET/POST                          /api/admin/products/:id/discount-rules
+PATCH/DELETE                      /api/admin/products/:id/discount-rules/:ruleId
+
+# Product Discount (legacy) — staff+
+PUT                               /api/admin/products/:id/discount
+
+# Inventory / Stock Movements — staff+
+GET                               /api/admin/inventory            (?startDate, ?endDate, ?productId, ?variantId, ?category)
+GET                               /api/admin/inventory/export     (same filters → XLS download)
+POST                              /api/admin/inventory/add        (manual stock adjustment: variantId, quantity, notes, addedAt)
+
 # Dashboard — staff+
-GET                               /api/admin/dashboard         (?period=today|yesterday|this_month|last_month|custom, ?startDate, ?endDate) → sales stats, growth %, trend chart, item rankings
+GET                               /api/admin/dashboard            (?period=today|yesterday|this_month|last_month|custom, ?startDate, ?endDate)
 
 # Customers — staff+
-GET                               /api/admin/customers         (?page, ?limit=25|50|100, ?search, ?status=active|inactive) → paginated
+GET                               /api/admin/customers            (?page, ?limit=25|50|100, ?search, ?status=active|inactive)
 POST                              /api/admin/customers
 PATCH                             /api/admin/customers/:id/toggle-status
-PATCH                             /api/admin/customers/:id/type  → update CustomerType (base | wholesale)
+PATCH                             /api/admin/customers/:id/type   (update CustomerType: base | wholesale)
 
 # Credit — staff+
 GET                               /api/admin/credit
-PUT                               /api/admin/credit/:customerId
+PUT                               /api/admin/credit/:customerId   (set creditLimit + termOfPayment)
 
 # Receivables — staff+
 GET                               /api/admin/receivables
@@ -171,17 +196,16 @@ POST                              /api/admin/receivables/:id/payments
 # Orders — staff+
 GET                               /api/admin/orders
 GET                               /api/admin/orders/:id
-PATCH                             /api/admin/orders/:id/confirm     (payment confirm → paid)
-PATCH                             /api/admin/orders/:id/status      (manual status update)
-PATCH                             /api/admin/orders/:id/ship        (assign courier)
+PATCH                             /api/admin/orders/:id/confirm            (payment confirm → paid)
+PATCH                             /api/admin/orders/:id/settle-credit      (mark credit order fully settled)
+PATCH                             /api/admin/orders/:id/ship               (assign courier)
+PATCH                             /api/admin/orders/:id/status             (manual status update)
+PATCH                             /api/admin/orders/:id/complaints/:complaintId/status  (update complaint lifecycle)
 
 # Shipping — manager+
 GET/PUT/PATCH/DELETE              /api/admin/shipping-zones
 GET/POST/PATCH/DELETE             /api/admin/shipping-drivers
 GET/POST/PATCH/DELETE             /api/admin/shipping-shifts
-
-# Discount — staff+
-PUT                               /api/admin/products/:id/discount
 
 # Carousel — manager+
 GET/PUT                           /api/admin/carousel
@@ -205,54 +229,106 @@ GET                               /api/admin/units/:id
 
 ---
 
-## Task Progress (vs task.md)
+## Discount System (current)
 
-### ✅ Actually Done
-| Task | Notes |
-|---|---|
-| 1.1 Ritel customer registration | Admin creates via POST /api/admin/customers; toggle-status endpoint exists; PATCH /:id/type to change base↔wholesale |
-| 1.3 Customer type pricing | Guest → basePrice, Ritel (logged-in) → wholesalePrice; applied at checkout + product listing; `type` stored on Customer row (CustomerType enum) |
-| Dashboard | GET /api/admin/dashboard; period filter (today/yesterday/this_month/last_month/custom); returns totalSales, totalOrders, newCustomers + growth % vs prev period; sales trend chart (hourly or daily); item rankings by qty and value |
-| 2.2 Order expiration & auto-cancel | expiresAt = NOW() + ORDER_EXPIRY_MINUTES (default 30). pg_cron runs every 5 mins in Supabase (restores stock + sets expired_unpaid). Lazy fallback in getOrderStatus + uploadPaymentProof. |
-| 3.4 Product-specific discount | ProductDiscount model; independent % for Harga Normal + Harga Retail; toggle on/off; applies to all variants; PUT /admin/products/:id/discount |
-| 5.1 Delivery zone management | Full CRUD, admin + public endpoint |
-| 5.3 Courier assignment (retail) | Ship endpoint creates OrderShippingAssignment |
-| 6.2 Bank transfer payment flow | checkout → proof upload → admin confirm |
-| 6.3 Credit payment flow | Checkout accepts `paymentMethod: 'credit'` for authenticated customers; validates credit limit; order created with `status: paid`, `expiresAt: null`. Admin manages credit limits via `/api/admin/credit`. Credit invoices tracked via `/api/admin/receivables` with partial payment support (`CreditPayment`). Customer can view own credit summary at `/api/customer/credit`. |
-| 6.4 Unpaid invoice enforcement | Enforced at checkout: `outstandingCredit + newOrderTotal > creditLimit` → 400. Credit limit 0 = credit blocked. No explicit per-invoice block — limit-based enforcement. |
-| 7.1 Real-time stock visibility | Variant stock in product endpoints; decremented on checkout |
-| Carousel management | CarouselSlide model; admin PUT /api/admin/carousel (manager+); public GET /api/carousel (active slides) |
-| Category management | Category model; full CRUD at /api/admin/categories (staff+); public GET /api/categories |
-| Unit management | Unit model; full CRUD at /api/admin/units (staff+) |
+Two systems coexist. The rule-based system (3.6/3.7) is newer and takes precedence at checkout.
 
-## Customer Types
-- **Guest** — non-login (`type: base`), pays `basePrice`. Auto-created on checkout.
-- **Ritel** — registered (`type: wholesale`), pays `wholesalePrice`. Admin creates only. Can buy 1 or bulk.
-- `type` is persisted as `CustomerType` enum on the `customers` table. Admin can change it via `PATCH /api/admin/customers/:id/type`.
-- No B2B/B2C distinction. Task 1.2 (store customer) was removed as N/A.
-- Pricing logic: checkout and product listing apply `wholesalePrice` when `authenticatedCustomerId` is present.
+### Rule-Based (VariantDiscountRule + ProductDiscountRule)
+- **Trigger**: `quantity` (min/max units in cart) or `line_subtotal` (min/max subtotal for line)
+- **Value**: `percentage` (%) or `fixed_amount` (Rp)
+- **Apply**: `per_item` (discount per unit) or `line_total` (discount on total line)
+- **Scope**: `customerType` = base | wholesale | null (both)
+- **Priority**: higher number = evaluated first; first matching active rule wins
+- Applied in `src/utils/variant-discount.ts` (used by checkout + public products)
 
-### ⚠️ Marked Done but Incomplete / Partial
-| Task | What's missing |
-|---|---|
-| 2.1 Cart management | **Status in task.md corrected to Todo.** No persistent cart exists. Checkout validates items inline only. No add/remove cart endpoints, no cart model. |
-| 3.5 Shipping discount rules | Free shipping threshold IS implemented (`deliveryRetailFreeShippingMinimumOrder` / `deliveryStoreFreeShippingMinimumOrder` in Store; applied at checkout). Partial shipping discount (e.g. 50% off) is NOT implemented. |
-| 5.2 Red zone enforcement | No zone validation during checkout. ShippingZone exists but not enforced. |
+### Legacy (ProductDiscount)
+- Simple flat % per product for normal vs retail price
+- Still functional; used if no rule-based discount applies
 
-### ❌ Not Started
-| Task | Notes |
-|---|---|
-| 1.4 Credit eligibility | Auto-eligibility (3 cash transactions) not implemented. Admin manually sets credit limit as override — the "manual override" part works, but automatic 3-transaction gate does not. |
-| 1.5 Credit term configuration | No credit term (due date / grace period) model. Credit limit per customer exists but no configurable terms. |
-| 4.1 Voucher generation | No model |
-| 4.2 Voucher redemption | No model |
-| 5.5 Delivery SLA tracking | No model; OrderShippingAssignment has deliveryDate but no SLA deadline |
-| 9.1 Complaint submission | No model |
-| 9.3 Reminder notifications | No model |
+---
+
+## Inventory / Stock Movement
+
+Every stock change creates a `StockMovement` row:
+- `initial_stock` — first stock set when variant created/seeded
+- `add_stock` — manual admin adjustment via `POST /admin/inventory/add`
+- `sale` — decremented at checkout (inside transaction)
+- `restore` — restored on order expiry (pg_cron + lazy fallback)
+
+`balanceAfter` = running stock total after each event. Used for audit/history views.
+Export at `GET /admin/inventory/export` → `.xls` file via `src/utils/xls.ts`.
+
+---
+
+## Credit System
+
+- `CustomerCredit.creditLimit` — max outstanding balance allowed
+- `CustomerCredit.termOfPayment` — days until payment due (set by admin)
+- At checkout: `termOfPaymentSnapshot` copied from CustomerCredit to Order
+- Enforcement: `outstandingCredit + newOrderTotal > creditLimit` → 400
+- Credit settlement: admin calls `PATCH /admin/orders/:id/settle-credit` → sets `creditSettledAt`
+- Customer view: `GET /customer/credit` returns limit + outstanding balance
+
+---
+
+## Order Completion
+
+- Customer: `PATCH /customer/orders/:id/complete` → sets `customerCompletedAt`
+- Admin (credit settle): `PATCH /admin/orders/:id/settle-credit` → sets `creditSettledAt`
+- Order status `done` can also be set via `PATCH /admin/orders/:id/status`
+
+---
+
+## Complaint System
+
+- Customer files: `POST /customer/orders/:id/complaints` (comment + evidenceImageUrls)
+- `OrderComplaint.status` lifecycle: `open` → `accepted` / `rejected` → `resolved`
+- Admin updates: `PATCH /admin/orders/:id/complaints/:complaintId/status`
+- Admin fields: `adminNote`, `acceptedByAdminId`, `rejectedByAdminId`, `resolvedByAdminId`
+
+---
 
 ## Order Expiry Notes
 - `ORDER_EXPIRY_MINUTES=30` in `.env` — controls expiresAt at checkout
-- pg_cron job `expire-unpaid-orders` runs every 5 mins in Supabase SQL
+- pg_cron job `expire-unpaid-orders` runs every 5 mins in Supabase SQL (prod only)
 - Lazy fallback in `getOrderStatus` and `uploadPaymentProof`
-- Stock decremented at checkout, restored on expiry (both pg_cron + lazy)
-- `OrderItem.variantId` added to schema for stock restoration
+- Stock decremented at checkout (inside transaction), restored on expiry (both pg_cron + lazy)
+- `OrderItem.variantId` kept for stock restoration
+- **Stg gap**: no pg_cron equivalent yet (task 0.7 — node-cron not yet implemented)
+
+---
+
+## Task Progress (vs task.md)
+
+### ✅ Done
+- 0.1–0.6 All infra (Docker, CI/CD, staging, MinIO, local PostgreSQL)
+- 1.1, 1.3 Customer auth + pricing
+- 1.5 Credit term (termOfPayment per customer, snapshotted at checkout)
+- 2.2 Order expiry + auto-cancel
+- 2.3 Minimum order validation
+- 2.4 Order completion (customer + credit settle)
+- 3.4 Legacy product discount
+- 3.6 Variant-level discount rules
+- 3.7 Product-level discount rules
+- 5.1 Delivery zone management
+- 5.3 Courier assignment
+- 6.2 Bank transfer payment
+- 6.3 Credit payment flow
+- 6.4 Unpaid invoice enforcement
+- 7.1 Real-time stock visibility
+- 7.2 Stock movement ledger + export
+- 8.1 Sales dashboard
+- 9.1 Complaint submission + admin lifecycle
+
+### ⚠️ Partial
+- 3.5 Shipping discount — free shipping threshold done; partial % discount not implemented
+
+### ❌ Not Started / Todo
+- 0.7 node-cron for stg order expiry
+- 0.8 Migrate prod to local stack
+- 1.4 Auto credit eligibility (3 cash transactions gate)
+- 2.1 Persistent cart (backend)
+- 4.1/4.2 Voucher system
+- 5.2 Red zone enforcement at checkout
+- 5.5 Delivery SLA tracking
+- 9.3 Reminder notifications

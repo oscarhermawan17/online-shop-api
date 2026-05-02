@@ -177,6 +177,12 @@ export const checkout = async (input: CheckoutInput) => {
   // Validate store exists
   const store = await prisma.store.findUnique({
     where: { id: storeId },
+    include: {
+      bankAccounts: {
+        orderBy: { sortOrder: 'asc' as const },
+        select: { id: true, bankName: true, accountNumber: true, accountHolder: true },
+      },
+    },
   });
 
   if (!store) {
@@ -512,9 +518,7 @@ export const checkout = async (input: CheckoutInput) => {
     store: {
       name: store.name,
       whatsappNumber: store.whatsappNumber,
-      bankAccountName: store.bankAccountName,
-      bankAccountNumber: store.bankAccountNumber,
-      bankName: store.bankName,
+      bankAccounts: store.bankAccounts,
       qrisImageUrl: store.qrisImageUrl,
     },
   };
@@ -610,10 +614,16 @@ export const getOrderStatus = async (publicOrderId: string) => {
         select: {
           name: true,
           whatsappNumber: true,
-          bankName: true,
-          bankAccountNumber: true,
-          bankAccountName: true,
           qrisImageUrl: true,
+          bankAccounts: {
+            orderBy: { sortOrder: 'asc' as const },
+            select: {
+              id: true,
+              bankName: true,
+              accountNumber: true,
+              accountHolder: true,
+            },
+          },
         },
       },
     },

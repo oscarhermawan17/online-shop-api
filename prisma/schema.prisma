@@ -32,9 +32,6 @@ model Store {
   whatsappNumber                         String?
   email                                  String?
   address                                String?
-  bankAccountName                        String?
-  bankAccountNumber                      String?
-  bankName                               String?
   qrisImageUrl                           String?
   createdAt                              DateTime                  @default(now())
   updatedAt                              DateTime                  @updatedAt
@@ -43,6 +40,7 @@ model Store {
   deliveryStoreFreeShippingMinimumOrder  Int?
   deliveryStoreMinimumOrder              Int?
   admins                                 Admin[]
+  bankAccounts                           StoreBankAccount[]
   carouselSlides                         CarouselSlide[]
   categories                             Category[]
   creditPayments                         CreditPayment[]
@@ -69,6 +67,21 @@ model Store {
   variants                               Variant[]
 
   @@map("stores")
+}
+
+model StoreBankAccount {
+  id            String   @id @default(uuid())
+  storeId       String
+  bankName      BankName
+  accountNumber String
+  accountHolder String
+  sortOrder     Int      @default(0)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  store         Store    @relation(fields: [storeId], references: [id], onDelete: Cascade)
+
+  @@index([storeId])
+  @@map("store_bank_accounts")
 }
 
 model CarouselSlide {
@@ -626,4 +639,13 @@ enum StockMovementCategory {
   add_stock
   sale
   restore
+}
+
+enum BankName {
+  BCA
+  BRI
+  BNI
+  Mandiri
+  BankPapua
+  BTN
 }

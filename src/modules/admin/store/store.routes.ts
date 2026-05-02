@@ -14,4 +14,7 @@ router.get('/', requireRole('manager'), storeController.getStore);
 // PATCH /admin/store - owner, manager only
 router.patch('/', requireRole('manager'), storeController.updateStore);
 
+// PUT /admin/store/bank-accounts - manager+
+router.put('/bank-accounts', requireRole('manager'), storeController.updateBankAccounts);
+
 export default router;

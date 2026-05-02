@@ -19,6 +19,15 @@ export const getPublicStore = async (
         deliveryStoreMinimumOrder: true,
         deliveryRetailFreeShippingMinimumOrder: true,
         deliveryStoreFreeShippingMinimumOrder: true,
+        bankAccounts: {
+          orderBy: { sortOrder: 'asc' as const },
+          select: {
+            id: true,
+            bankName: true,
+            accountNumber: true,
+            accountHolder: true,
+          },
+        },
       },
     });
     if (!store) {
