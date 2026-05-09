@@ -15,6 +15,8 @@ export const getPublicStore = async (
         name: true,
         description: true,
         address: true,
+        logoUrl: true,
+        qrisImageUrl: true,
         deliveryRetailMinimumOrder: true,
         deliveryStoreMinimumOrder: true,
         deliveryRetailFreeShippingMinimumOrder: true,

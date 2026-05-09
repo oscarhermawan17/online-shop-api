@@ -494,7 +494,7 @@ model Admin {
   id                    String          @id @default(uuid())
   storeId               String
   name                  String
-  phone                 String          @unique
+  phone                 String
   email                 String?
   password              String
   role                  AdminRole       @default(owner)
@@ -503,6 +503,7 @@ model Admin {
   store                 Store           @relation(fields: [storeId], references: [id], onDelete: Cascade)
   createdStockMovements StockMovement[] @relation("AdminStockMovements")
 
+  @@unique([storeId, phone])
   @@index([storeId])
   @@map("admins")
 }

@@ -14,15 +14,19 @@ let prisma: typeof import('./config/prisma').default | null = null;
 
 const startServer = async (): Promise<void> => {
   try {
-    const [{ default: app }, { default: prismaClient }] = await Promise.all([
+    const [{ default: app }, { default: prismaClient }, { startExpireOrdersJob }] = await Promise.all([
       import('./app'),
       import('./config/prisma'),
+      import('./jobs/expire-orders.job'),
     ]);
     prisma = prismaClient;
 
     // Verify database connection on startup
     await prisma.$connect();
     console.log('✅ Database connected successfully');
+
+    // Start background jobs
+    startExpireOrdersJob();
 
     server = app.listen(PORT, () => {
       console.log(`🚀 Server running in [${NODE_ENV}] mode on port ${PORT}`);

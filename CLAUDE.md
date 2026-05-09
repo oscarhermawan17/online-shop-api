@@ -108,6 +108,7 @@ All models have `storeId` except Store, HealthCheck, and VariantOptionValue (int
 - **Prod**: `ghcr.io/oscarhermawan17/online-shop-api:latest` — port 4000
 - **Stg**: `ghcr.io/oscarhermawan17/online-shop-api:staging` — port 8000
 - CI/CD: push to `main` → `:latest`, push to `stg` → `:staging`, auto-deploys to VPS
+- CI/CD runs `npx prisma db push --accept-data-loss` before container starts (using new image + `--network umkm_default`)
 - VPS path: `/home/ubuntu/umkm/docker-compose.yaml`
 
 ---
@@ -288,6 +289,16 @@ Export at `GET /admin/inventory/export` → `.xls` file via `src/utils/xls.ts`.
 
 ---
 
+## Background Jobs (`src/jobs/`)
+
+| File | Schedule | Purpose |
+|---|---|---|
+| `expire-orders.job.ts` | `ORDER_EXPIRY_CRON_MINUTES` (default 5) | Finds `pending_payment` orders past `expiresAt`, restores stock via `restoreOrderStock` (creates StockMovement records), sets status to `expired_unpaid` |
+
+Jobs are started in `server.ts` after DB connects. All jobs are inside the Node.js process — no system cron or VPS configuration needed.
+
+---
+
 ## Order Expiry Notes
 - `ORDER_EXPIRY_MINUTES=30` in `.env` — controls expiresAt at checkout
 - pg_cron job `expire-unpaid-orders` runs every 5 mins in Supabase SQL (prod only)
@@ -301,10 +312,12 @@ Export at `GET /admin/inventory/export` → `.xls` file via `src/utils/xls.ts`.
 ## Task Progress (vs task.md)
 
 ### ✅ Done
-- 0.1–0.6 All infra (Docker, CI/CD, staging, MinIO, local PostgreSQL)
+- 0.1–0.7 All infra (Docker, CI/CD, staging, MinIO, local PostgreSQL, node-cron)
+- 0.8 Migrate prod to local stack
+- 0.9 Fix Admin.phone → @@unique([storeId, phone])
 - 1.1, 1.3 Customer auth + pricing
 - 1.5 Credit term (termOfPayment per customer, snapshotted at checkout)
-- 2.2 Order expiry + auto-cancel
+- 2.2 Order expiry + auto-cancel (node-cron + lazy fallback)
 - 2.3 Minimum order validation
 - 2.4 Order completion (customer + credit settle)
 - 3.4 Legacy product discount
@@ -312,7 +325,7 @@ Export at `GET /admin/inventory/export` → `.xls` file via `src/utils/xls.ts`.
 - 3.7 Product-level discount rules
 - 5.1 Delivery zone management
 - 5.3 Courier assignment
-- 6.2 Bank transfer payment
+- 6.2 Bank transfer payment (multiple bank accounts via StoreBankAccount)
 - 6.3 Credit payment flow
 - 6.4 Unpaid invoice enforcement
 - 7.1 Real-time stock visibility
@@ -324,11 +337,8 @@ Export at `GET /admin/inventory/export` → `.xls` file via `src/utils/xls.ts`.
 - 3.5 Shipping discount — free shipping threshold done; partial % discount not implemented
 
 ### ❌ Not Started / Todo
-- 0.7 node-cron for stg order expiry
-- 0.8 Migrate prod to local stack
 - 1.4 Auto credit eligibility (3 cash transactions gate)
 - 2.1 Persistent cart (backend)
 - 4.1/4.2 Voucher system
-- 5.2 Red zone enforcement at checkout
 - 5.5 Delivery SLA tracking
-- 9.3 Reminder notifications
+- 9.3 Reminder notifications (WhatsApp OTP + notification — last feature before sell)

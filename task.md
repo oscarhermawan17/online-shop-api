@@ -15,8 +15,9 @@
 | 0.4 | Deploy user | Minimal `deploy` user on VPS; docker + umkm group only; SSH key in GitHub secrets | 1 | Done |
 | 0.5 | Local PostgreSQL for stg | Replace Supabase cloud with PostgreSQL Docker container for stg | 3 | Done |
 | 0.6 | MinIO for stg | Replace Cloudinary with MinIO Docker container for stg; upload code updated to presign flow | 5 | Done |
-| 0.7 | node-cron for stg | Replace pg_cron with node-cron inside Express for order expiry (stg has no Supabase pg_cron) | 2 | Todo |
-| 0.8 | Migrate prod to local stack | Move prod from Supabase cloud + Cloudinary → VPS local (after stg is stable) | 5 | Todo |
+| 0.7 | node-cron for order expiry | Replace pg_cron with node-cron inside Express for order expiry. Job in `src/jobs/expire-orders.job.ts`, started in `server.ts` after DB connects. Interval controlled by `ORDER_EXPIRY_CRON_MINUTES` env var (default 5). Works for both prod and stg. | 2 | Done |
+| 0.8 | Migrate prod to local stack | Move prod from Supabase cloud + Cloudinary → VPS local (after stg is stable) | 5 | Done |
+| 0.9 | Fix Admin.phone uniqueness | Change `phone String @unique` → `@@unique([storeId, phone])` on Admin model — current global unique blocks multi-tenant | 1 | Done |
 
 ---
 
@@ -39,7 +40,7 @@
 | #   | Task                           | Description                                                                                                                                                                                              | SP  | Status |
 | --- | ------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --- | ------ |
 | 2.1 | Cart management                | Add/remove items, order per unit (PCS). **No persistent cart** — current checkout validates items inline only; cart is client-side Zustand only.                                                         | 5   | Todo   |
-| 2.2 | Order expiration & auto-cancel | Auto-cancel unpaid orders after 30 minutes; stock restored automatically. expiresAt set at checkout via ORDER_EXPIRY_MINUTES env. pg_cron runs every 5 mins in Supabase. Lazy fallback in API endpoints. | 3   | Done   |
+| 2.2 | Order expiration & auto-cancel | Auto-cancel unpaid orders after 30 minutes; stock restored automatically. expiresAt set at checkout via ORDER_EXPIRY_MINUTES env. node-cron runs every N mins (ORDER_EXPIRY_CRON_MINUTES). Lazy fallback in API endpoints. StockMovement records created on restore. | 3   | Done   |
 | 2.3 | Minimum order validation       | Enforce minimum order amount before checkout (configurable by admin)                                                                                                                                     | 2   | Done   |
 | 2.4 | Order completion flow          | Customer marks order done via PATCH /customer/orders/:id/complete (sets customerCompletedAt). Admin can settle credit orders via PATCH /admin/orders/:id/settle-credit. | 2 | Done |
 
@@ -70,7 +71,6 @@
 | #   | Task                        | Description                                                                                                              | SP  | Status |
 | --- | --------------------------- | ------------------------------------------------------------------------------------------------------------------------ | --- | ------ |
 | 5.1 | Delivery zone management    | Define and manage serviceable delivery zones via admin                                                                   | 5   | Done   |
-| 5.2 | Red zone enforcement        | Block delivery requests to non-serviceable/restricted areas. ShippingZone exists but zone validation NOT enforced at checkout. | 3   | Todo   |
 | 5.3 | Courier assignment (retail) | Assign motorbike couriers to retail orders; handle capacity checks                                                       | 5   | Done   |
 | 5.5 | Delivery SLA tracking       | Track delivery SLA (retail 24h, store 48h); flag overdue deliveries for action, related to 9.1 (customer can complaints) | 5   | Todo   |
 
@@ -116,7 +116,7 @@
 
 | Status  | Count |
 | ------- | ----- |
-| Done    | 21    |
+| Done    | 22    |
 | Partial | 1     |
-| Todo    | 8     |
+| Todo    | 7     |
 | N/A     | 1     |
