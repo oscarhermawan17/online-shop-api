@@ -39,6 +39,9 @@ model Store {
   deliveryRetailMinimumOrder             Int?
   deliveryStoreFreeShippingMinimumOrder  Int?
   deliveryStoreMinimumOrder              Int?
+  fonnteEnabled                          Boolean @default(false)
+  fonnteToken                            String?
+  adminWhatsapp                          String?
   admins                                 Admin[]
   bankAccounts                           StoreBankAccount[]
   carouselSlides                         CarouselSlide[]

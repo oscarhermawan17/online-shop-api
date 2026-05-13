@@ -300,12 +300,38 @@ Jobs are started in `server.ts` after DB connects. All jobs are inside the Node.
 ---
 
 ## Order Expiry Notes
-- `ORDER_EXPIRY_MINUTES=30` in `.env` — controls expiresAt at checkout
-- pg_cron job `expire-unpaid-orders` runs every 5 mins in Supabase SQL (prod only)
-- Lazy fallback in `getOrderStatus` and `uploadPaymentProof`
-- Stock decremented at checkout (inside transaction), restored on expiry (both pg_cron + lazy)
-- `OrderItem.variantId` kept for stock restoration
-- **Stg gap**: no pg_cron equivalent yet (task 0.7 — node-cron not yet implemented)
+- `ORDER_EXPIRY_MINUTES=30` in `.env` — controls `expiresAt` set at checkout (payment window)
+- `ORDER_EXPIRY_CRON_MINUTES=5` in `.env` — controls how often the expiry cron check runs (default 5)
+- node-cron job in `src/jobs/expire-orders.job.ts` runs inside the API process — no VPS/system cron needed
+- Lazy fallback also in `getOrderStatus` and `uploadPaymentProof`
+- Stock decremented at checkout (inside transaction), restored on expiry (cron + lazy fallback)
+- `OrderItem.variantId` kept for stock restoration; each restore creates a `StockMovement` record
+
+---
+
+## WhatsApp Notifications (`src/utils/whatsapp.ts`)
+
+Uses **Fonnte** — Indonesian WA gateway. No Meta Business API approval needed. Works with a regular WhatsApp number (scan QR on fonnte.com dashboard).
+
+**Env vars:**
+- `FONNTE_TOKEN` — API token from fonnte.com
+- `FONNTE_ENABLED=true` — must be set to enable (default false, logs to console instead)
+- `ADMIN_WHATSAPP` — admin phone number (format: `628xx...`)
+
+**Behavior:**
+- All sends are fire-and-forget using `void` — WA failure never crashes the main API flow
+- Phone numbers normalized: `08xx → 628xx` automatically
+- API uses `multipart/form-data` with `Authorization: TOKEN` header (not Bearer)
+
+**Templates available:**
+| Function | Trigger | Wired? |
+|---|---|---|
+| `notifyOrderPlaced` | Customer places order | ✅ checkout.service.ts |
+| `notifyAdminNewOrder` | Customer places order | ✅ checkout.service.ts |
+| `notifyAdminPaymentProof` | Customer uploads payment proof | ❌ not wired yet |
+| `notifyPaymentConfirmed` | Admin confirms payment | ❌ not wired yet |
+| `notifyOrderShipped` | Admin assigns courier (ship order) | ❌ not wired yet |
+| `notifyOrderExpired` | Cron job expires unpaid order | ❌ not wired yet |
 
 ---
 
@@ -335,10 +361,10 @@ Jobs are started in `server.ts` after DB connects. All jobs are inside the Node.
 
 ### ⚠️ Partial
 - 3.5 Shipping discount — free shipping threshold done; partial % discount not implemented
+- 9.3 WhatsApp notifications — order placed wired; payment proof, confirm, ship, expired not wired yet
 
 ### ❌ Not Started / Todo
 - 1.4 Auto credit eligibility (3 cash transactions gate)
 - 2.1 Persistent cart (backend)
 - 4.1/4.2 Voucher system
 - 5.5 Delivery SLA tracking
-- 9.3 Reminder notifications (WhatsApp OTP + notification — last feature before sell)

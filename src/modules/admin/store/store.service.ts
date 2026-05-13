@@ -1,7 +1,7 @@
-import { BankName } from '@prisma/client';
+import { BankName } from "@prisma/client"
 
-import prisma from '../../../config/prisma';
-import { AppError } from '../../../middlewares/error.middleware';
+import prisma from "../../../config/prisma"
+import { AppError } from "../../../middlewares/error.middleware"
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -12,37 +12,40 @@ export const VALID_BANK_NAMES: BankName[] = [
   BankName.Mandiri,
   BankName.BankPapua,
   BankName.BTN,
-];
+]
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 export interface UpdateStoreInput {
-  name?: string;
-  description?: string;
-  logoUrl?: string;
-  bannerUrl?: string;
-  footerText?: string;
-  whatsappNumber?: string;
-  email?: string;
-  address?: string;
-  qrisImageUrl?: string;
-  deliveryRetailMinimumOrder?: number | null;
-  deliveryStoreMinimumOrder?: number | null;
-  deliveryRetailFreeShippingMinimumOrder?: number | null;
-  deliveryStoreFreeShippingMinimumOrder?: number | null;
+  name?: string
+  description?: string
+  logoUrl?: string
+  bannerUrl?: string
+  footerText?: string
+  whatsappNumber?: string
+  email?: string
+  address?: string
+  qrisImageUrl?: string
+  deliveryRetailMinimumOrder?: number | null
+  deliveryStoreMinimumOrder?: number | null
+  deliveryRetailFreeShippingMinimumOrder?: number | null
+  deliveryStoreFreeShippingMinimumOrder?: number | null
+  fonnteEnabled?: boolean
+  fonnteToken?: string | null
+  adminWhatsapp?: string | null
 }
 
 export interface BankAccountInput {
-  bankName: BankName;
-  accountNumber: string;
-  accountHolder: string;
+  bankName: BankName
+  accountNumber: string
+  accountHolder: string
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 const withBankAccounts = {
   bankAccounts: {
-    orderBy: { sortOrder: 'asc' as const },
+    orderBy: { sortOrder: "asc" as const },
     select: {
       id: true,
       bankName: true,
@@ -51,7 +54,7 @@ const withBankAccounts = {
       sortOrder: true,
     },
   },
-};
+}
 
 // ─── Service ──────────────────────────────────────────────────────────────────
 
@@ -59,24 +62,24 @@ export const getStore = async (storeId: string) => {
   const store = await prisma.store.findUnique({
     where: { id: storeId },
     include: withBankAccounts,
-  });
+  })
 
   if (!store) {
-    throw new AppError('Store not found', 404);
+    throw new AppError("Store not found", 404)
   }
 
-  return store;
-};
+  return store
+}
 
 export const updateStore = async (storeId: string, data: UpdateStoreInput) => {
   const store = await prisma.store.update({
     where: { id: storeId },
     data,
     include: withBankAccounts,
-  });
+  })
 
-  return store;
-};
+  return store
+}
 
 export const upsertBankAccounts = async (
   storeId: string,
@@ -86,15 +89,15 @@ export const upsertBankAccounts = async (
   for (const acc of accounts) {
     if (!VALID_BANK_NAMES.includes(acc.bankName)) {
       throw new AppError(
-        `Nama bank tidak valid: ${acc.bankName}. Pilihan: ${VALID_BANK_NAMES.join(', ')}`,
+        `Nama bank tidak valid: ${acc.bankName}. Pilihan: ${VALID_BANK_NAMES.join(", ")}`,
         400,
-      );
+      )
     }
     if (!acc.accountNumber?.trim()) {
-      throw new AppError('Nomor rekening tidak boleh kosong', 400);
+      throw new AppError("Nomor rekening tidak boleh kosong", 400)
     }
     if (!acc.accountHolder?.trim()) {
-      throw new AppError('Nama pemilik rekening tidak boleh kosong', 400);
+      throw new AppError("Nama pemilik rekening tidak boleh kosong", 400)
     }
   }
 
@@ -115,7 +118,7 @@ export const upsertBankAccounts = async (
       },
       include: withBankAccounts,
     }),
-  ]);
+  ])
 
-  return updatedStore.bankAccounts;
-};
+  return updatedStore.bankAccounts
+}

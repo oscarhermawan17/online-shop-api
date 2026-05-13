@@ -1,7 +1,7 @@
 # Task Board — Online Store System
 
 > Organized by Epic (Parent). Story Points use Fibonacci scale. All tasks start as `Todo`.
-> Last updated: 2026-05-02
+> Last updated: 2026-05-09
 
 ---
 
@@ -39,7 +39,7 @@
 
 | #   | Task                           | Description                                                                                                                                                                                              | SP  | Status |
 | --- | ------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --- | ------ |
-| 2.1 | Cart management                | Add/remove items, order per unit (PCS). **No persistent cart** — current checkout validates items inline only; cart is client-side Zustand only.                                                         | 5   | Todo   |
+| 2.1 | Cart management                | Add/remove items, order per unit (PCS). **No persistent cart** — current checkout validates items inline only; cart is client-side Zustand only. 🔴 High Priority                                       | 5   | Todo   |
 | 2.2 | Order expiration & auto-cancel | Auto-cancel unpaid orders after 30 minutes; stock restored automatically. expiresAt set at checkout via ORDER_EXPIRY_MINUTES env. node-cron runs every N mins (ORDER_EXPIRY_CRON_MINUTES). Lazy fallback in API endpoints. StockMovement records created on restore. | 3   | Done   |
 | 2.3 | Minimum order validation       | Enforce minimum order amount before checkout (configurable by admin)                                                                                                                                     | 2   | Done   |
 | 2.4 | Order completion flow          | Customer marks order done via PATCH /customer/orders/:id/complete (sets customerCompletedAt). Admin can settle credit orders via PATCH /admin/orders/:id/settle-credit. | 2 | Done |
@@ -72,7 +72,7 @@
 | --- | --------------------------- | ------------------------------------------------------------------------------------------------------------------------ | --- | ------ |
 | 5.1 | Delivery zone management    | Define and manage serviceable delivery zones via admin                                                                   | 5   | Done   |
 | 5.3 | Courier assignment (retail) | Assign motorbike couriers to retail orders; handle capacity checks                                                       | 5   | Done   |
-| 5.5 | Delivery SLA tracking       | Track delivery SLA (retail 24h, store 48h); flag overdue deliveries for action, related to 9.1 (customer can complaints) | 5   | Todo   |
+| 5.5 | Delivery SLA tracking       | Track delivery SLA (retail 24h, store 48h); flag overdue deliveries for action, related to 9.1 (customer can complaints) and 9.3 (WA notification when delivery is overdue). 🔴 High Priority | 5   | Todo   |
 
 ---
 
@@ -108,7 +108,7 @@
 | #   | Task                   | Description                                                                                | SP  | Status |
 | --- | ---------------------- | ------------------------------------------------------------------------------------------ | --- | ------ |
 | 9.1 | Complaint submission   | Customer files a complaint via POST /customer/orders/:id/complaints with comment + evidence images. Admin updates complaint status (open→accepted/rejected/resolved) via PATCH /admin/orders/:id/complaints/:complaintId/status. OrderComplaint model with full lifecycle. | 5   | Done   |
-| 9.3 | Reminder notifications | Notify customers and admin of pending deliveries, upcoming due dates, and overdue payments | 5   | Todo   |
+| 9.3 | WhatsApp notifications | WA notifications via Fonnte (Indonesian gateway, no Meta approval needed). Utility in `src/utils/whatsapp.ts`. Env: `FONNTE_TOKEN`, `FONNTE_ENABLED` (default false), `ADMIN_WHATSAPP`. All sends are fire-and-forget (never crash main flow). **Done**: order placed → customer + admin. **Remaining**: payment proof uploaded → admin (`notifyAdminPaymentProof`), payment confirmed → customer (`notifyPaymentConfirmed`), order shipped → customer (`notifyOrderShipped`), order expired → customer (`notifyOrderExpired` in cron job), delivery overdue → customer + admin (depends on 5.5). 🔴 High Priority | 5   | Partial |
 
 ---
 
@@ -117,6 +117,6 @@
 | Status  | Count |
 | ------- | ----- |
 | Done    | 22    |
-| Partial | 1     |
-| Todo    | 7     |
+| Partial | 2     |
+| Todo    | 6     |
 | N/A     | 1     |

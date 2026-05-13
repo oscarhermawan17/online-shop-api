@@ -1,83 +1,94 @@
-import { OrderComplaintStatus, PaymentMethod, Prisma } from '@prisma/client';
+import { OrderComplaintStatus, PaymentMethod, Prisma } from "@prisma/client"
 
-import prisma from '../../../config/prisma';
-import { AppError } from '../../../middlewares/error.middleware';
-import { CREDIT_EXCLUDED_STATUSES, getPaidCreditAmount, getRemainingCreditAmount } from '../../../utils/credit';
-import { restoreOrderStock } from '../../../utils/order-stock';
-import { recordStockMovement } from '../../../utils/stock-ledger';
-import { resolveVariantDiscount } from '../../../utils/variant-discount';
-import { populateVariantDescriptions } from '../../../utils/order-item';
+import prisma from "../../../config/prisma"
+import { AppError } from "../../../middlewares/error.middleware"
+import {
+  CREDIT_EXCLUDED_STATUSES,
+  getPaidCreditAmount,
+  getRemainingCreditAmount,
+} from "../../../utils/credit"
+import { restoreOrderStock } from "../../../utils/order-stock"
+import { recordStockMovement } from "../../../utils/stock-ledger"
+import { resolveVariantDiscount } from "../../../utils/variant-discount"
+import { populateVariantDescriptions } from "../../../utils/order-item"
+import { notifyOrderPlaced, notifyAdminNewOrder } from "../../../utils/whatsapp"
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 export interface CheckoutItem {
-  variantId?: string;
-  productId: string;
-  quantity: number;
+  variantId?: string
+  productId: string
+  quantity: number
 }
 
 export interface CheckoutInput {
-  storeId: string;
-  customerName: string;
-  customerPhone: string;
-  customerEmail?: string;
-  customerAddress?: string;
-  deliveryMethod?: string;
-  paymentMethod?: PaymentMethod;
-  notes?: string;
-  shippingCost?: number;
-  items: CheckoutItem[];
-  authenticatedCustomerId?: string;
+  storeId: string
+  customerName: string
+  customerPhone: string
+  customerEmail?: string
+  customerAddress?: string
+  deliveryMethod?: string
+  paymentMethod?: PaymentMethod
+  notes?: string
+  shippingCost?: number
+  items: CheckoutItem[]
+  authenticatedCustomerId?: string
 }
 
 export interface PaymentProofInput {
-  imageUrl: string;
+  imageUrl: string
 }
 
 const formatRupiah = (amount: number): string =>
-  new Intl.NumberFormat('id-ID', {
-    style: 'currency',
-    currency: 'IDR',
+  new Intl.NumberFormat("id-ID", {
+    style: "currency",
+    currency: "IDR",
     minimumFractionDigits: 0,
     maximumFractionDigits: 0,
-  }).format(amount);
+  }).format(amount)
 
-const ORDER_ITEM_SNAPSHOT_FIELDS = ['originalPrice', 'discountAmount', 'discountRuleName'] as const;
-const OPEN_COMPLAINT_STATUSES: OrderComplaintStatus[] = ['open', 'accepted'];
+const ORDER_ITEM_SNAPSHOT_FIELDS = [
+  "originalPrice",
+  "discountAmount",
+  "discountRuleName",
+] as const
+const OPEN_COMPLAINT_STATUSES: OrderComplaintStatus[] = ["open", "accepted"]
 
 const supportsOrderItemDiscountSnapshot = (() => {
-  const orderItemModel = Prisma.dmmf.datamodel.models.find((model) => model.name === 'OrderItem');
+  const orderItemModel = Prisma.dmmf.datamodel.models.find(
+    (model) => model.name === "OrderItem",
+  )
   if (!orderItemModel) {
-    return false;
+    return false
   }
 
-  const fieldNames = new Set(orderItemModel.fields.map((field) => field.name));
-  return ORDER_ITEM_SNAPSHOT_FIELDS.every((field) => fieldNames.has(field));
-})();
+  const fieldNames = new Set(orderItemModel.fields.map((field) => field.name))
+  return ORDER_ITEM_SNAPSHOT_FIELDS.every((field) => fieldNames.has(field))
+})()
 
 // ─── Helper: Generate public order ID ─────────────────────────────────────────
 
 const generatePublicOrderId = (): string => {
-  const timestamp = Date.now().toString(36).toUpperCase();
-  const random = Math.random().toString(36).substring(2, 6).toUpperCase();
-  return `ORD-${timestamp}-${random}`;
-};
+  const timestamp = Date.now().toString(36).toUpperCase()
+  const random = Math.random().toString(36).substring(2, 6).toUpperCase()
+  return `ORD-${timestamp}-${random}`
+}
 
 const parseEvidenceImageUrls = (value: Prisma.JsonValue): string[] => {
   if (!Array.isArray(value)) {
-    return [];
+    return []
   }
 
-  return value.filter((item): item is string => typeof item === 'string');
-};
+  return value.filter((item): item is string => typeof item === "string")
+}
 
 const resolvePaymentMethod = (value?: string): PaymentMethod => {
-  if (value === 'credit') {
-    return 'credit';
+  if (value === "credit") {
+    return "credit"
   }
 
-  return 'bank_transfer';
-};
+  return "bank_transfer"
+}
 
 const getOutstandingCreditTotal = async (
   storeId: string,
@@ -87,7 +98,7 @@ const getOutstandingCreditTotal = async (
     where: {
       storeId,
       customerId,
-      paymentMethod: 'credit',
+      paymentMethod: "credit",
       status: {
         notIn: CREDIT_EXCLUDED_STATUSES,
       },
@@ -101,17 +112,20 @@ const getOutstandingCreditTotal = async (
         },
       },
     },
-  });
+  })
 
   return orders.reduce((sum, order) => {
-    const paidAmount = getPaidCreditAmount(order.creditPayments);
-    return sum + getRemainingCreditAmount({
-      totalAmount: order.totalAmount,
-      paidAmount,
-      creditSettledAt: order.creditSettledAt,
-    });
-  }, 0);
-};
+    const paidAmount = getPaidCreditAmount(order.creditPayments)
+    return (
+      sum +
+      getRemainingCreditAmount({
+        totalAmount: order.totalAmount,
+        paidAmount,
+        creditSettledAt: order.creditSettledAt,
+      })
+    )
+  }, 0)
+}
 
 // ─── Helper: Lazy expiry check ────────────────────────────────────────────────
 // Fallback for orders that pg_cron hasn't processed yet.
@@ -134,81 +148,97 @@ const expireOrderIfNeeded = async (orderId: string): Promise<boolean> => {
           },
         },
       },
-    });
+    })
 
-    if (!order || order.status !== 'pending_payment') return false;
-    if (order.paymentMethod === 'credit') return false;
-    if (!order.expiresAt || order.expiresAt > new Date()) return false;
+    if (!order || order.status !== "pending_payment") return false
+    if (order.paymentMethod === "credit") return false
+    if (!order.expiresAt || order.expiresAt > new Date()) return false
 
     const transition = await tx.order.updateMany({
       where: {
         id: order.id,
-        status: 'pending_payment',
+        status: "pending_payment",
       },
-      data: { status: 'expired_unpaid' },
-    });
+      data: { status: "expired_unpaid" },
+    })
 
     if (transition.count === 0) {
-      return false;
+      return false
     }
 
     await restoreOrderStock(tx, {
       storeId: order.storeId,
       orderId: order.id,
       items: order.items,
-      notes: 'Restore stok otomatis karena order expired unpaid',
-    });
+      notes: "Restore stok otomatis karena order expired unpaid",
+    })
 
-    return true;
-  });
-};
+    return true
+  })
+}
 
 // ─── Service ──────────────────────────────────────────────────────────────────
 
 export const checkout = async (input: CheckoutInput) => {
   const {
-    storeId, customerName, customerPhone, customerEmail,
-    customerAddress, deliveryMethod, paymentMethod: rawPaymentMethod, notes, shippingCost,
-    items, authenticatedCustomerId,
-  } = input;
-  const paymentMethod = resolvePaymentMethod(rawPaymentMethod);
-  const publicOrderId = generatePublicOrderId();
+    storeId,
+    customerName,
+    customerPhone,
+    customerEmail,
+    customerAddress,
+    deliveryMethod,
+    paymentMethod: rawPaymentMethod,
+    notes,
+    shippingCost,
+    items,
+    authenticatedCustomerId,
+  } = input
+  const paymentMethod = resolvePaymentMethod(rawPaymentMethod)
+  const publicOrderId = generatePublicOrderId()
 
   // Validate store exists
   const store = await prisma.store.findUnique({
     where: { id: storeId },
     include: {
       bankAccounts: {
-        orderBy: { sortOrder: 'asc' as const },
-        select: { id: true, bankName: true, accountNumber: true, accountHolder: true },
+        orderBy: { sortOrder: "asc" as const },
+        select: {
+          id: true,
+          bankName: true,
+          accountNumber: true,
+          accountHolder: true,
+        },
       },
     },
-  });
+  })
 
   if (!store) {
-    throw new AppError('Store not found', 404);
+    throw new AppError("Store not found", 404)
   }
 
   // Find or create customer — prefer authenticated customer when logged in
-  let customer;
+  let customer
   if (authenticatedCustomerId) {
     customer = await prisma.customer.findUnique({
       where: { id: authenticatedCustomerId },
-    });
+    })
     if (!customer) {
-      throw new AppError('Authenticated customer not found', 404);
+      throw new AppError("Authenticated customer not found", 404)
     }
     if (customer.storeId !== storeId) {
-      throw new AppError('Authenticated customer does not belong to this store', 400);
+      throw new AppError(
+        "Authenticated customer does not belong to this store",
+        400,
+      )
     }
 
     if (!customer.isActive) {
-      throw new AppError('Akun pelanggan ini sedang dinonaktifkan', 403);
+      throw new AppError("Akun pelanggan ini sedang dinonaktifkan", 403)
     }
   } else {
     customer = await prisma.customer.findUnique({
       where: { storeId_phone: { storeId, phone: customerPhone } },
-    });
+    })
 
     if (!customer) {
       customer = await prisma.customer.create({
@@ -217,38 +247,44 @@ export const checkout = async (input: CheckoutInput) => {
           phone: customerPhone,
           email: customerEmail,
         },
-      });
+      })
     } else if (customerEmail && !customer.email) {
       // Update email if provided and not set
       customer = await prisma.customer.update({
         where: { id: customer.id },
         data: { email: customerEmail },
-      });
+      })
     }
   }
 
-  const isWholesaleCustomer = customer.type === 'wholesale';
+  const isWholesaleCustomer = customer.type === "wholesale"
 
-  if (paymentMethod === 'credit' && !authenticatedCustomerId) {
-    throw new AppError('Metode pembayaran credit hanya tersedia untuk user wholesale yang login', 400);
+  if (paymentMethod === "credit" && !authenticatedCustomerId) {
+    throw new AppError(
+      "Metode pembayaran credit hanya tersedia untuk user wholesale yang login",
+      400,
+    )
   }
 
-  if (paymentMethod === 'credit' && !isWholesaleCustomer) {
-    throw new AppError('Metode pembayaran credit hanya tersedia untuk user wholesale', 400);
+  if (paymentMethod === "credit" && !isWholesaleCustomer) {
+    throw new AppError(
+      "Metode pembayaran credit hanya tersedia untuk user wholesale",
+      400,
+    )
   }
 
   // Process items and calculate total
-  let totalAmount = 0;
+  let totalAmount = 0
   const orderItems: {
-    variantId: string | null;
-    productName: string;
-    variantDescription: string | null;
-    originalPrice: number;
-    price: number;
-    discountAmount: number;
-    discountRuleName: string | null;
-    quantity: number;
-  }[] = [];
+    variantId: string | null
+    productName: string
+    variantDescription: string | null
+    originalPrice: number
+    price: number
+    discountAmount: number
+    discountRuleName: string | null
+    quantity: number
+  }[] = []
 
   for (const item of items) {
     const product = await prisma.product.findUnique({
@@ -257,9 +293,9 @@ export const checkout = async (input: CheckoutInput) => {
         productDiscountRules: {
           where: { isActive: true },
           orderBy: [
-            { priority: 'desc' },
-            { minThreshold: 'desc' },
-            { createdAt: 'asc' },
+            { priority: "desc" },
+            { minThreshold: "desc" },
+            { createdAt: "asc" },
           ],
         },
         variants: {
@@ -270,71 +306,83 @@ export const checkout = async (input: CheckoutInput) => {
             discountRules: {
               where: { isActive: true },
               orderBy: [
-                { priority: 'desc' },
-                { minThreshold: 'desc' },
-                { createdAt: 'asc' },
+                { priority: "desc" },
+                { minThreshold: "desc" },
+                { createdAt: "asc" },
               ],
             },
           },
         },
       },
-    });
+    })
 
     if (!product) {
-      throw new AppError(`Product not found: ${item.productId}`, 404);
+      throw new AppError(`Product not found: ${item.productId}`, 404)
     }
 
     if (product.storeId !== storeId) {
-      throw new AppError('Product does not belong to this store', 400);
+      throw new AppError("Product does not belong to this store", 400)
     }
 
     const variant = item.variantId
-      ? product.variants.find((v: (typeof product.variants)[number]) => v.id === item.variantId)
-      : (product.variants.find((v: (typeof product.variants)[number]) => v.isDefault) || product.variants[0]);
+      ? product.variants.find(
+          (v: (typeof product.variants)[number]) => v.id === item.variantId,
+        )
+      : product.variants.find(
+          (v: (typeof product.variants)[number]) => v.isDefault,
+        ) || product.variants[0]
 
     if (!variant) {
-      throw new AppError(`Variant not found for product: ${item.productId}`, 404);
+      throw new AppError(
+        `Variant not found for product: ${item.productId}`,
+        404,
+      )
     }
 
     if (variant.stock < item.quantity) {
-      throw new AppError(
-        `Insufficient stock for variant: ${variant.id}`,
-        400,
-      );
+      throw new AppError(`Insufficient stock for variant: ${variant.id}`, 400)
     }
 
-    const isWholesale = isWholesaleCustomer;
-    const retailPrice = variant.priceOverride ?? product.basePrice;
-    const wholesalePrice = variant.wholesalePriceOverride ?? product.wholesalePrice ?? retailPrice;
-    const rawUnitPrice = isWholesale ? wholesalePrice : retailPrice;
+    const isWholesale = isWholesaleCustomer
+    const retailPrice = variant.priceOverride ?? product.basePrice
+    const wholesalePrice =
+      variant.wholesalePriceOverride ?? product.wholesalePrice ?? retailPrice
+    const rawUnitPrice = isWholesale ? wholesalePrice : retailPrice
     const combinedRules = [
       ...variant.discountRules.map((rule) => ({
         ...rule,
-        source: 'variant' as const,
+        source: "variant" as const,
       })),
       ...product.productDiscountRules
-        .filter((rule) => rule.targetVariantIds.length === 0 || rule.targetVariantIds.includes(variant.id))
+        .filter(
+          (rule) =>
+            rule.targetVariantIds.length === 0 ||
+            rule.targetVariantIds.includes(variant.id),
+        )
         .map((rule) => ({
           ...rule,
-          source: 'product' as const,
+          source: "product" as const,
         })),
-    ];
+    ]
 
     const pricing = resolveVariantDiscount(combinedRules, {
       quantity: item.quantity,
       unitPrice: rawUnitPrice,
       customerType: customer.type,
-    });
+    })
 
     // Build variant description from selected option values, fallback to variant.name
-    const variantDescription = variant.optionValues.length > 0
-      ? variant.optionValues
-        .map(
-          (ov: (typeof variant.optionValues)[number]) =>
-            `${ov.optionValue.option.name}: ${ov.optionValue.value}`,
-        )
-        .join(', ')
-      : (!variant.isDefault && variant.name ? variant.name : null);
+    const variantDescription =
+      variant.optionValues.length > 0
+        ? variant.optionValues
+            .map(
+              (ov: (typeof variant.optionValues)[number]) =>
+                `${ov.optionValue.option.name}: ${ov.optionValue.value}`,
+            )
+            .join(", ")
+        : !variant.isDefault && variant.name
+          ? variant.name
+          : null
 
     orderItems.push({
       variantId: variant.id,
@@ -345,70 +393,75 @@ export const checkout = async (input: CheckoutInput) => {
       discountAmount: pricing.lineDiscount,
       discountRuleName: pricing.rule?.name ?? null,
       quantity: item.quantity,
-    });
+    })
 
-    totalAmount += pricing.effectiveLineTotal;
+    totalAmount += pricing.effectiveLineTotal
   }
 
-  const isDelivery = deliveryMethod === 'delivery';
+  const isDelivery = deliveryMethod === "delivery"
   const minimumOrder = isWholesaleCustomer
     ? store.deliveryStoreMinimumOrder
-    : store.deliveryRetailMinimumOrder;
+    : store.deliveryRetailMinimumOrder
   const freeShippingMinimumOrder = isWholesaleCustomer
     ? store.deliveryStoreFreeShippingMinimumOrder
-    : store.deliveryRetailFreeShippingMinimumOrder;
+    : store.deliveryRetailFreeShippingMinimumOrder
 
   if (isDelivery && minimumOrder && totalAmount < minimumOrder) {
     throw new AppError(
       `Minimal belanja untuk pengiriman ${
-        isWholesaleCustomer ? 'wholesale' : 'base'
+        isWholesaleCustomer ? "wholesale" : "base"
       } adalah ${formatRupiah(minimumOrder)}`,
       400,
-    );
+    )
   }
 
-  const qualifiesForFreeShipping = isDelivery
-    && !!freeShippingMinimumOrder
-    && totalAmount >= freeShippingMinimumOrder;
-  const finalShippingCost = qualifiesForFreeShipping ? 0 : (shippingCost ?? 0);
-  const finalTotalAmount = totalAmount + finalShippingCost;
+  const qualifiesForFreeShipping =
+    isDelivery &&
+    !!freeShippingMinimumOrder &&
+    totalAmount >= freeShippingMinimumOrder
+  const finalShippingCost = qualifiesForFreeShipping ? 0 : (shippingCost ?? 0)
+  const finalTotalAmount = totalAmount + finalShippingCost
 
-  let termOfPaymentSnapshot = 0;
+  let termOfPaymentSnapshot = 0
 
-  if (paymentMethod === 'credit') {
+  if (paymentMethod === "credit") {
     const customerCredit = await prisma.customerCredit.findFirst({
       where: {
         storeId,
         customerId: customer.id,
       },
-    });
+    })
 
     if (!customerCredit || customerCredit.creditLimit <= 0) {
-      throw new AppError('Limit credit untuk pelanggan ini belum diatur', 400);
+      throw new AppError("Limit credit untuk pelanggan ini belum diatur", 400)
     }
 
-    const outstandingCredit = await getOutstandingCreditTotal(storeId, customer.id);
+    const outstandingCredit = await getOutstandingCreditTotal(
+      storeId,
+      customer.id,
+    )
 
-    termOfPaymentSnapshot = customerCredit.termOfPayment ?? 0;
+    termOfPaymentSnapshot = customerCredit.termOfPayment ?? 0
 
     if (outstandingCredit + finalTotalAmount > customerCredit.creditLimit) {
       throw new AppError(
         `Limit credit tidak mencukupi. Terpakai ${formatRupiah(outstandingCredit)} dari ${formatRupiah(customerCredit.creditLimit)}`,
         400,
-      );
+      )
     }
   }
 
-  const expiryMinutes = parseInt(process.env.ORDER_EXPIRY_MINUTES ?? '30', 10);
-  const expiresAt = paymentMethod === 'bank_transfer'
-    ? new Date(Date.now() + expiryMinutes * 60 * 1000)
-    : null;
-  const initialStatus = paymentMethod === 'credit' ? 'paid' : 'pending_payment';
+  const expiryMinutes = parseInt(process.env.ORDER_EXPIRY_MINUTES ?? "30", 10)
+  const expiresAt =
+    paymentMethod === "bank_transfer"
+      ? new Date(Date.now() + expiryMinutes * 60 * 1000)
+      : null
+  const initialStatus = paymentMethod === "credit" ? "paid" : "pending_payment"
 
   const order = await prisma.$transaction(async (tx) => {
     for (const item of orderItems) {
       if (!item.variantId) {
-        continue;
+        continue
       }
 
       const stockUpdate = await tx.variant.updateMany({
@@ -424,13 +477,13 @@ export const checkout = async (input: CheckoutInput) => {
             decrement: item.quantity,
           },
         },
-      });
+      })
 
       if (stockUpdate.count === 0) {
         throw new AppError(
           `Insufficient stock for variant: ${item.variantId}`,
           400,
-        );
+        )
       }
 
       const updatedVariant = await tx.variant.findUnique({
@@ -440,24 +493,24 @@ export const checkout = async (input: CheckoutInput) => {
           productId: true,
           stock: true,
         },
-      });
+      })
 
       if (!updatedVariant) {
-        throw new AppError(`Variant not found: ${item.variantId}`, 404);
+        throw new AppError(`Variant not found: ${item.variantId}`, 404)
       }
 
       await recordStockMovement(tx, {
         storeId,
         productId: updatedVariant.productId,
         variantId: updatedVariant.id,
-        stockStatus: 'out',
+        stockStatus: "out",
         quantity: item.quantity,
-        category: 'sale',
+        category: "sale",
         balanceAfter: updatedVariant.stock,
-        referenceType: 'checkout',
+        referenceType: "checkout",
         referenceId: publicOrderId,
-        notes: 'Pengurangan stok dari proses checkout',
-      });
+        notes: "Pengurangan stok dari proses checkout",
+      })
     }
 
     return tx.order.create({
@@ -488,10 +541,10 @@ export const checkout = async (input: CheckoutInput) => {
               storeId,
               ...(supportsOrderItemDiscountSnapshot
                 ? {
-                  originalPrice: item.originalPrice,
-                  discountAmount: item.discountAmount,
-                  discountRuleName: item.discountRuleName,
-                }
+                    originalPrice: item.originalPrice,
+                    discountAmount: item.discountAmount,
+                    discountRuleName: item.discountRuleName,
+                  }
                 : {}),
             })),
           },
@@ -501,8 +554,29 @@ export const checkout = async (input: CheckoutInput) => {
         customer: true,
         items: true,
       },
-    });
-  });
+    })
+  })
+
+  // Fire-and-forget WA notifications — only for registered/logged-in customers
+  if (authenticatedCustomerId) {
+    const waPhone = order.customer.phone
+    const waName = order.customer.name ?? order.customerName ?? "Pelanggan"
+
+    void notifyOrderPlaced(
+      storeId,
+      waPhone,
+      waName,
+      order.publicOrderId,
+      order.totalAmount,
+      store.name,
+    )
+    void notifyAdminNewOrder(
+      storeId,
+      order.publicOrderId,
+      waName,
+      order.totalAmount,
+    )
+  }
 
   return {
     publicOrderId: order.publicOrderId,
@@ -511,8 +585,10 @@ export const checkout = async (input: CheckoutInput) => {
     totalAmount: order.totalAmount,
     expiresAt: order.expiresAt,
     shippingCost: order.shippingCost,
-    minimumOrderApplied: isDelivery ? minimumOrder ?? null : null,
-    freeShippingMinimumOrderApplied: isDelivery ? freeShippingMinimumOrder ?? null : null,
+    minimumOrderApplied: isDelivery ? (minimumOrder ?? null) : null,
+    freeShippingMinimumOrderApplied: isDelivery
+      ? (freeShippingMinimumOrder ?? null)
+      : null,
     isFreeShippingApplied: qualifiesForFreeShipping,
     items: order.items,
     store: {
@@ -521,8 +597,8 @@ export const checkout = async (input: CheckoutInput) => {
       bankAccounts: store.bankAccounts,
       qrisImageUrl: store.qrisImageUrl,
     },
-  };
-};
+  }
+}
 
 export const uploadPaymentProof = async (
   publicOrderId: string,
@@ -531,27 +607,30 @@ export const uploadPaymentProof = async (
   const order = await prisma.order.findUnique({
     where: { publicOrderId },
     include: { paymentProof: true },
-  });
+  })
 
   if (!order) {
-    throw new AppError('Order not found', 404);
+    throw new AppError("Order not found", 404)
   }
 
   // Lazy expiry check — in case pg_cron hasn't run yet
-  const wasExpired = await expireOrderIfNeeded(order.id);
+  const wasExpired = await expireOrderIfNeeded(order.id)
   if (wasExpired) {
-    throw new AppError('Order has expired. Please create a new order.', 400);
+    throw new AppError("Order has expired. Please create a new order.", 400)
   }
 
-  if (order.paymentMethod === 'credit') {
-    throw new AppError('Order credit tidak memerlukan upload bukti pembayaran', 400);
+  if (order.paymentMethod === "credit") {
+    throw new AppError(
+      "Order credit tidak memerlukan upload bukti pembayaran",
+      400,
+    )
   }
 
-  if (order.status !== 'pending_payment') {
+  if (order.status !== "pending_payment") {
     throw new AppError(
       `Cannot upload payment proof for order with status: ${order.status}`,
       400,
-    );
+    )
   }
 
   if (order.paymentProof) {
@@ -559,7 +638,7 @@ export const uploadPaymentProof = async (
     await prisma.paymentProof.update({
       where: { id: order.paymentProof.id },
       data: { imageUrl: input.imageUrl },
-    });
+    })
   } else {
     // Create new proof
     await prisma.paymentProof.create({
@@ -568,32 +647,35 @@ export const uploadPaymentProof = async (
         orderId: order.id,
         imageUrl: input.imageUrl,
       },
-    });
+    })
   }
 
   // Update order status
   const updatedOrder = await prisma.order.update({
     where: { id: order.id },
-    data: { status: 'waiting_confirmation' },
+    data: { status: "waiting_confirmation" },
     include: {
       customer: true,
       items: true,
       paymentProof: true,
     },
-  });
+  })
 
   return {
     publicOrderId: updatedOrder.publicOrderId,
     status: updatedOrder.status,
     paymentMethod: updatedOrder.paymentMethod,
     paymentProof: updatedOrder.paymentProof,
-  };
-};
+  }
+}
 
 export const getOrderStatus = async (publicOrderId: string) => {
   // Lazy expiry check before returning status
-  const orderForExpiry = await prisma.order.findUnique({ where: { publicOrderId }, select: { id: true } });
-  if (orderForExpiry) await expireOrderIfNeeded(orderForExpiry.id);
+  const orderForExpiry = await prisma.order.findUnique({
+    where: { publicOrderId },
+    select: { id: true },
+  })
+  if (orderForExpiry) await expireOrderIfNeeded(orderForExpiry.id)
 
   const order = await prisma.order.findUnique({
     where: { publicOrderId },
@@ -607,7 +689,7 @@ export const getOrderStatus = async (publicOrderId: string) => {
       },
       complaints: {
         orderBy: {
-          createdAt: 'desc',
+          createdAt: "desc",
         },
       },
       store: {
@@ -616,7 +698,7 @@ export const getOrderStatus = async (publicOrderId: string) => {
           whatsappNumber: true,
           qrisImageUrl: true,
           bankAccounts: {
-            orderBy: { sortOrder: 'asc' as const },
+            orderBy: { sortOrder: "asc" as const },
             select: {
               id: true,
               bankName: true,
@@ -627,13 +709,13 @@ export const getOrderStatus = async (publicOrderId: string) => {
         },
       },
     },
-  });
+  })
 
   if (!order) {
-    throw new AppError('Order not found', 404);
+    throw new AppError("Order not found", 404)
   }
 
-  const items = await populateVariantDescriptions(order.items);
+  const items = await populateVariantDescriptions(order.items)
 
   return {
     publicOrderId: order.publicOrderId,
@@ -671,8 +753,8 @@ export const getOrderStatus = async (publicOrderId: string) => {
         }
       : null,
     store: order.store,
-  };
-};
+  }
+}
 
 export const completeOrder = async (publicOrderId: string) => {
   const order = await prisma.order.findUnique({
@@ -689,18 +771,21 @@ export const completeOrder = async (publicOrderId: string) => {
         },
       },
     },
-  });
+  })
 
   if (!order) {
-    throw new AppError('Order not found', 404);
+    throw new AppError("Order not found", 404)
   }
 
-  if (order.status !== 'shipped' && order.status !== 'done') {
-    throw new AppError('Order hanya bisa diselesaikan setelah dikirim', 400);
+  if (order.status !== "shipped" && order.status !== "done") {
+    throw new AppError("Order hanya bisa diselesaikan setelah dikirim", 400)
   }
 
   if (order.complaints.length > 0) {
-    throw new AppError('Tidak bisa menyelesaikan pesanan saat komplain masih aktif', 400);
+    throw new AppError(
+      "Tidak bisa menyelesaikan pesanan saat komplain masih aktif",
+      400,
+    )
   }
 
   return prisma.order.update({
@@ -709,7 +794,7 @@ export const completeOrder = async (publicOrderId: string) => {
     },
     data: {
       customerCompletedAt: order.customerCompletedAt ?? new Date(),
-      status: order.adminCompletedAt ? 'done' : 'shipped',
+      status: order.adminCompletedAt ? "done" : "shipped",
     },
     select: {
       publicOrderId: true,
@@ -717,5 +802,5 @@ export const completeOrder = async (publicOrderId: string) => {
       adminCompletedAt: true,
       customerCompletedAt: true,
     },
-  });
-};
+  })
+}
