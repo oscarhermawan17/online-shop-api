@@ -119,54 +119,6 @@ export const notifyOrderPlaced = async (
   await sendWhatsApp(storeId, customerPhone, message)
 }
 
-export const notifyPaymentConfirmed = async (
-  storeId: string,
-  customerPhone: string,
-  customerName: string,
-  publicOrderId: string,
-  storeName: string,
-) => {
-  const message =
-    `Halo ${customerName}! ✅\n\n` +
-    `Pembayaran pesanan *#${publicOrderId}* sudah dikonfirmasi.\n` +
-    `Pesanan kamu sedang diproses.\n\n` +
-    `Terima kasih sudah belanja di *${storeName}*! 🙏`
-
-  await sendWhatsApp(storeId, customerPhone, message)
-}
-
-export const notifyOrderShipped = async (
-  storeId: string,
-  customerPhone: string,
-  customerName: string,
-  publicOrderId: string,
-  driverName: string,
-  storeName: string,
-) => {
-  const message =
-    `Halo ${customerName}! 🚚\n\n` +
-    `Pesanan *#${publicOrderId}* sedang dalam perjalanan.\n` +
-    `Kurir: *${driverName}*\n\n` +
-    `Terima kasih sudah belanja di *${storeName}*! 🙏`
-
-  await sendWhatsApp(storeId, customerPhone, message)
-}
-
-export const notifyOrderExpired = async (
-  storeId: string,
-  customerPhone: string,
-  customerName: string,
-  publicOrderId: string,
-  storeName: string,
-) => {
-  const message =
-    `Halo ${customerName}! ⚠️\n\n` +
-    `Pesanan *#${publicOrderId}* sudah kadaluarsa karena belum dibayar.\n\n` +
-    `Kamu bisa melakukan pesanan baru kapan saja di *${storeName}*.`
-
-  await sendWhatsApp(storeId, customerPhone, message)
-}
-
 export const notifyAdminNewOrder = async (
   storeId: string,
   publicOrderId: string,
@@ -182,23 +134,6 @@ export const notifyAdminNewOrder = async (
     `Pelanggan: ${customerName}\n` +
     `Total: *Rp ${totalAmount.toLocaleString("id-ID")}*\n\n` +
     `Cek dashboard untuk detail.`
-
-  await sendWhatsApp(storeId, adminWhatsapp, message)
-}
-
-export const notifyAdminPaymentProof = async (
-  storeId: string,
-  publicOrderId: string,
-  customerName: string,
-) => {
-  const { adminWhatsapp } = await getWAConfig(storeId)
-  if (!adminWhatsapp) return
-
-  const message =
-    `💰 *Bukti Pembayaran Diterima*\n\n` +
-    `Order: *#${publicOrderId}*\n` +
-    `Pelanggan: ${customerName}\n\n` +
-    `Silakan cek dan konfirmasi pembayaran di dashboard.`
 
   await sendWhatsApp(storeId, adminWhatsapp, message)
 }

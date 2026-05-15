@@ -2,7 +2,6 @@ import cron from "node-cron"
 import prisma from "../config/prisma"
 import { restoreOrderStock } from "../utils/order-stock"
 import { notifyCustomerOrderExpired } from "../utils/notifications"
-import { notifyOrderExpired as notifyOrderExpiredWA } from "../utils/whatsapp"
 
 /**
  * Interval controlled by ORDER_EXPIRY_CRON_MINUTES env var (default: 5).
@@ -62,33 +61,6 @@ export const startExpireOrdersJob = () => {
           order.publicOrderId,
           order.customerId,
         )
-
-        // WA notification — fire-and-forget, fetch customer+store data async
-        void (async () => {
-          try {
-            const [customer, store] = await Promise.all([
-              prisma.customer.findUnique({
-                where: { id: order.customerId },
-                select: { phone: true, name: true },
-              }),
-              prisma.store.findUnique({
-                where: { id: order.storeId },
-                select: { name: true },
-              }),
-            ])
-            if (customer && store) {
-              void notifyOrderExpiredWA(
-                order.storeId,
-                customer.phone,
-                customer.name ?? "Pelanggan",
-                order.publicOrderId,
-                store.name,
-              )
-            }
-          } catch {
-            /* ignore */
-          }
-        })()
 
         console.log(`  ✓ Order ${order.id} expired`)
       }

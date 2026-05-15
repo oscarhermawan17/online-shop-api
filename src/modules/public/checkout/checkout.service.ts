@@ -11,7 +11,7 @@ import { restoreOrderStock } from "../../../utils/order-stock"
 import { recordStockMovement } from "../../../utils/stock-ledger"
 import { resolveVariantDiscount } from "../../../utils/variant-discount"
 import { populateVariantDescriptions } from "../../../utils/order-item"
-import { notifyOrderPlaced, notifyAdminNewOrder, notifyAdminPaymentProof } from "../../../utils/whatsapp"
+import { notifyOrderPlaced, notifyAdminNewOrder } from "../../../utils/whatsapp"
 import {
   notifyCustomerOrderPlaced,
   notifyAdminNewOrder as notifyAdminNewOrderInApp,
@@ -673,13 +673,6 @@ export const uploadPaymentProof = async (
 
   // In-app notification — notify admin about new payment proof
   notifyAdminPaymentProofInApp(order.storeId, order.id, updatedOrder.publicOrderId)
-
-  // WA notification — notify admin about payment proof
-  void notifyAdminPaymentProof(
-    order.storeId,
-    updatedOrder.publicOrderId,
-    updatedOrder.customer.name ?? updatedOrder.customerName ?? "Pelanggan",
-  )
 
   return {
     publicOrderId: updatedOrder.publicOrderId,

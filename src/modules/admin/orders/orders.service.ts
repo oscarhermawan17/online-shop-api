@@ -15,10 +15,6 @@ import {
   notifyCustomerOrderShipped,
   notifyCustomerOrderDone,
 } from "../../../utils/notifications"
-import {
-  notifyPaymentConfirmed as notifyPaymentConfirmedWA,
-  notifyOrderShipped as notifyOrderShippedWA,
-} from "../../../utils/whatsapp"
 
 const OPEN_COMPLAINT_STATUSES: OrderComplaintStatus[] = ["open", "accepted"]
 
@@ -127,33 +123,6 @@ export const confirmPayment = async (storeId: string, orderId: string) => {
     updatedOrder.publicOrderId,
     order.customerId,
   )
-
-  // WA notification — fire-and-forget, fetch customer+store data async
-  void (async () => {
-    try {
-      const [customer, store] = await Promise.all([
-        prisma.customer.findUnique({
-          where: { id: order.customerId },
-          select: { phone: true, name: true },
-        }),
-        prisma.store.findUnique({
-          where: { id: order.storeId },
-          select: { name: true },
-        }),
-      ])
-      if (customer && store) {
-        void notifyPaymentConfirmedWA(
-          order.storeId,
-          customer.phone,
-          customer.name ?? order.customerName ?? "Pelanggan",
-          updatedOrder.publicOrderId,
-          store.name,
-        )
-      }
-    } catch {
-      /* ignore — WA failure must not affect main flow */
-    }
-  })()
 
   return toAdminOrderResponse(updatedOrder)
 }
@@ -560,34 +529,6 @@ export const shipOrder = async (
     order.customerId,
     driverName,
   )
-
-  // WA notification — fire-and-forget, fetch customer+store data async
-  void (async () => {
-    try {
-      const [customer, store] = await Promise.all([
-        prisma.customer.findUnique({
-          where: { id: order.customerId },
-          select: { phone: true, name: true },
-        }),
-        prisma.store.findUnique({
-          where: { id: order.storeId },
-          select: { name: true },
-        }),
-      ])
-      if (customer && store) {
-        void notifyOrderShippedWA(
-          order.storeId,
-          customer.phone,
-          customer.name ?? order.customerName ?? "Pelanggan",
-          updatedOrder.publicOrderId,
-          driverName,
-          store.name,
-        )
-      }
-    } catch {
-      /* ignore — WA failure must not affect main flow */
-    }
-  })()
 
   return toAdminOrderResponse(updatedOrder)
 }
