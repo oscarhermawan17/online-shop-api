@@ -11,7 +11,12 @@ import { restoreOrderStock } from "../../../utils/order-stock"
 import { recordStockMovement } from "../../../utils/stock-ledger"
 import { resolveVariantDiscount } from "../../../utils/variant-discount"
 import { populateVariantDescriptions } from "../../../utils/order-item"
-import { notifyOrderPlaced, notifyAdminNewOrder } from "../../../utils/whatsapp"
+import { notifyOrderPlaced, notifyAdminNewOrder, notifyAdminPaymentProof } from "../../../utils/whatsapp"
+import {
+  notifyCustomerOrderPlaced,
+  notifyAdminNewOrder as notifyAdminNewOrderInApp,
+  notifyAdminPaymentProof as notifyAdminPaymentProofInApp,
+} from "../../../utils/notifications"
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -578,6 +583,11 @@ export const checkout = async (input: CheckoutInput) => {
     )
   }
 
+  // In-app notifications — always fire (all orders have customerId)
+  const inAppName = order.customer.name ?? order.customerName ?? "Pelanggan"
+  notifyCustomerOrderPlaced(storeId, order.id, order.publicOrderId, order.customer.id)
+  notifyAdminNewOrderInApp(storeId, order.id, order.publicOrderId, inAppName)
+
   return {
     publicOrderId: order.publicOrderId,
     status: order.status,
@@ -660,6 +670,16 @@ export const uploadPaymentProof = async (
       paymentProof: true,
     },
   })
+
+  // In-app notification — notify admin about new payment proof
+  notifyAdminPaymentProofInApp(order.storeId, order.id, updatedOrder.publicOrderId)
+
+  // WA notification — notify admin about payment proof
+  void notifyAdminPaymentProof(
+    order.storeId,
+    updatedOrder.publicOrderId,
+    updatedOrder.customer.name ?? updatedOrder.customerName ?? "Pelanggan",
+  )
 
   return {
     publicOrderId: updatedOrder.publicOrderId,

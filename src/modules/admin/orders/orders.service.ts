@@ -1,20 +1,33 @@
-import { OrderComplaintStatus, OrderStatus } from '@prisma/client';
+import { OrderComplaintStatus, OrderStatus } from "@prisma/client"
 
-import prisma from '../../../config/prisma';
-import { AppError } from '../../../middlewares/error.middleware';
-import { getPaidCreditAmount, getRemainingCreditAmount, isCreditSettled } from '../../../utils/credit';
-import { restoreOrderStock } from '../../../utils/order-stock';
-import { toAdminOrderResponse } from './orders.mapper';
-import { populateVariantDescriptions } from '../../../utils/order-item';
+import prisma from "../../../config/prisma"
+import { AppError } from "../../../middlewares/error.middleware"
+import {
+  getPaidCreditAmount,
+  getRemainingCreditAmount,
+  isCreditSettled,
+} from "../../../utils/credit"
+import { restoreOrderStock } from "../../../utils/order-stock"
+import { toAdminOrderResponse } from "./orders.mapper"
+import { populateVariantDescriptions } from "../../../utils/order-item"
+import {
+  notifyCustomerPaymentConfirmed,
+  notifyCustomerOrderShipped,
+  notifyCustomerOrderDone,
+} from "../../../utils/notifications"
+import {
+  notifyPaymentConfirmed as notifyPaymentConfirmedWA,
+  notifyOrderShipped as notifyOrderShippedWA,
+} from "../../../utils/whatsapp"
 
-const OPEN_COMPLAINT_STATUSES: OrderComplaintStatus[] = ['open', 'accepted'];
+const OPEN_COMPLAINT_STATUSES: OrderComplaintStatus[] = ["open", "accepted"]
 
 const adminOrderInclude = {
   items: true,
   paymentProof: true,
   complaints: {
     orderBy: {
-      createdAt: 'desc',
+      createdAt: "desc",
     },
   },
   shippingAssignment: {
@@ -22,19 +35,19 @@ const adminOrderInclude = {
       shift: true,
     },
   },
-} as const;
+} as const
 
 // ─── Service ──────────────────────────────────────────────────────────────────
 
 export interface ListOrdersInput {
-  storeId: string;
-  status?: OrderStatus;
-  startDate?: Date;
-  endDateExclusive?: Date;
+  storeId: string
+  status?: OrderStatus
+  startDate?: Date
+  endDateExclusive?: Date
 }
 
 export const listOrders = async (input: ListOrdersInput) => {
-  const { storeId, status, startDate, endDateExclusive } = input;
+  const { storeId, status, startDate, endDateExclusive } = input
 
   const orders = await prisma.order.findMany({
     where: {
@@ -50,58 +63,100 @@ export const listOrders = async (input: ListOrdersInput) => {
         : {}),
     },
     include: adminOrderInclude,
-    orderBy: { createdAt: 'desc' },
-  });
+    orderBy: { createdAt: "desc" },
+  })
 
-  const allItems = await populateVariantDescriptions(orders.flatMap((o) => o.items));
-  const itemMap = new Map(allItems.map((i) => [i.id, i]));
-  const resolved = orders.map((o) => ({ ...o, items: o.items.map((i) => itemMap.get(i.id) ?? i) }));
+  const allItems = await populateVariantDescriptions(
+    orders.flatMap((o) => o.items),
+  )
+  const itemMap = new Map(allItems.map((i) => [i.id, i]))
+  const resolved = orders.map((o) => ({
+    ...o,
+    items: o.items.map((i) => itemMap.get(i.id) ?? i),
+  }))
 
-  return resolved.map(toAdminOrderResponse);
-};
+  return resolved.map(toAdminOrderResponse)
+}
 
 export const getOrder = async (storeId: string, orderId: string) => {
   const order = await prisma.order.findFirst({
     where: { id: orderId, storeId },
     include: adminOrderInclude,
-  });
+  })
 
   if (!order) {
-    throw new AppError('Order not found', 404);
+    throw new AppError("Order not found", 404)
   }
 
-  const items = await populateVariantDescriptions(order.items);
-  return toAdminOrderResponse({ ...order, items });
-};
+  const items = await populateVariantDescriptions(order.items)
+  return toAdminOrderResponse({ ...order, items })
+}
 
 export const confirmPayment = async (storeId: string, orderId: string) => {
   const order = await prisma.order.findFirst({
     where: { id: orderId, storeId },
-  });
+  })
 
   if (!order) {
-    throw new AppError('Order not found', 404);
+    throw new AppError("Order not found", 404)
   }
 
-  if (order.paymentMethod === 'credit') {
-    throw new AppError('Order credit tidak menggunakan konfirmasi bukti pembayaran', 400);
+  if (order.paymentMethod === "credit") {
+    throw new AppError(
+      "Order credit tidak menggunakan konfirmasi bukti pembayaran",
+      400,
+    )
   }
 
-  if (order.status !== 'waiting_confirmation') {
+  if (order.status !== "waiting_confirmation") {
     throw new AppError(
       `Cannot confirm payment for order with status: ${order.status}`,
       400,
-    );
+    )
   }
 
   const updatedOrder = await prisma.order.update({
     where: { id: orderId },
-    data: { status: 'paid' },
+    data: { status: "paid" },
     include: adminOrderInclude,
-  });
+  })
 
-  return toAdminOrderResponse(updatedOrder);
-};
+  notifyCustomerPaymentConfirmed(
+    order.storeId,
+    order.id,
+    updatedOrder.publicOrderId,
+    order.customerId,
+  )
+
+  // WA notification — fire-and-forget, fetch customer+store data async
+  void (async () => {
+    try {
+      const [customer, store] = await Promise.all([
+        prisma.customer.findUnique({
+          where: { id: order.customerId },
+          select: { phone: true, name: true },
+        }),
+        prisma.store.findUnique({
+          where: { id: order.storeId },
+          select: { name: true },
+        }),
+      ])
+      if (customer && store) {
+        void notifyPaymentConfirmedWA(
+          order.storeId,
+          customer.phone,
+          customer.name ?? order.customerName ?? "Pelanggan",
+          updatedOrder.publicOrderId,
+          store.name,
+        )
+      }
+    } catch {
+      /* ignore — WA failure must not affect main flow */
+    }
+  })()
+
+  return toAdminOrderResponse(updatedOrder)
+}
 
 export const settleCredit = async (storeId: string, orderId: string) => {
   const order = await prisma.order.findFirst({
@@ -109,36 +164,42 @@ export const settleCredit = async (storeId: string, orderId: string) => {
     include: {
       creditPayments: true,
     },
-  });
+  })
 
   if (!order) {
-    throw new AppError('Order not found', 404);
+    throw new AppError("Order not found", 404)
   }
 
-  if (order.paymentMethod !== 'credit') {
-    throw new AppError('Order ini bukan transaksi credit', 400);
+  if (order.paymentMethod !== "credit") {
+    throw new AppError("Order ini bukan transaksi credit", 400)
   }
 
-  const paidAmount = getPaidCreditAmount(order.creditPayments);
+  const paidAmount = getPaidCreditAmount(order.creditPayments)
   const remainingAmount = getRemainingCreditAmount({
     totalAmount: order.totalAmount,
     paidAmount,
     creditSettledAt: order.creditSettledAt,
-  });
+  })
 
-  if (isCreditSettled({
-    totalAmount: order.totalAmount,
-    paidAmount,
-    creditSettledAt: order.creditSettledAt,
-  }) || remainingAmount <= 0) {
-    throw new AppError('Invoice credit untuk order ini sudah dilunasi', 400);
+  if (
+    isCreditSettled({
+      totalAmount: order.totalAmount,
+      paidAmount,
+      creditSettledAt: order.creditSettledAt,
+    }) ||
+    remainingAmount <= 0
+  ) {
+    throw new AppError("Invoice credit untuk order ini sudah dilunasi", 400)
   }
 
-  if (order.status === 'cancelled' || order.status === 'expired_unpaid') {
-    throw new AppError(`Tidak bisa melunasi credit untuk order berstatus ${order.status}`, 400);
+  if (order.status === "cancelled" || order.status === "expired_unpaid") {
+    throw new AppError(
+      `Tidak bisa melunasi credit untuk order berstatus ${order.status}`,
+      400,
+    )
   }
 
-  const settledAt = new Date();
+  const settledAt = new Date()
 
   const updatedOrder = await prisma.$transaction(async (tx) => {
     await tx.creditPayment.create({
@@ -148,7 +209,7 @@ export const settleCredit = async (storeId: string, orderId: string) => {
         amount: remainingAmount,
         receivedAt: settledAt,
       },
-    });
+    })
 
     return tx.order.update({
       where: { id: orderId },
@@ -156,11 +217,11 @@ export const settleCredit = async (storeId: string, orderId: string) => {
         creditSettledAt: settledAt,
       },
       include: adminOrderInclude,
-    });
-  });
+    })
+  })
 
-  return toAdminOrderResponse(updatedOrder);
-};
+  return toAdminOrderResponse(updatedOrder)
+}
 
 export const updateOrderStatus = async (
   storeId: string,
@@ -185,37 +246,47 @@ export const updateOrderStatus = async (
         },
       },
     },
-  });
+  })
 
   if (!existingOrder) {
-    throw new AppError('Order not found', 404);
+    throw new AppError("Order not found", 404)
   }
 
-  if (status === 'done') {
-    if (existingOrder.status !== 'shipped' && existingOrder.status !== 'done') {
-      throw new AppError('Pesanan hanya bisa diselesaikan dari status dikirim', 400);
+  if (status === "done") {
+    if (existingOrder.status !== "shipped" && existingOrder.status !== "done") {
+      throw new AppError(
+        "Pesanan hanya bisa diselesaikan dari status dikirim",
+        400,
+      )
     }
 
     if (existingOrder.complaints.length > 0) {
-      throw new AppError('Masih ada komplain aktif pada pesanan ini', 400);
+      throw new AppError("Masih ada komplain aktif pada pesanan ini", 400)
     }
 
     const updated = await prisma.order.update({
       where: { id: existingOrder.id },
       data: {
         adminCompletedAt: new Date(),
-        status: existingOrder.customerCompletedAt ? 'done' : 'shipped',
+        status: existingOrder.customerCompletedAt ? "done" : "shipped",
       },
       include: adminOrderInclude,
-    });
+    })
 
-    return toAdminOrderResponse(updated);
+    notifyCustomerOrderDone(
+      existingOrder.storeId,
+      existingOrder.id,
+      existingOrder.publicOrderId,
+      existingOrder.customerId,
+    )
+
+    return toAdminOrderResponse(updated)
   }
 
-  const shouldRestoreReservedStock = (
-    (status === 'cancelled' || status === 'expired_unpaid')
-    && (existingOrder.status === 'pending_payment' || existingOrder.status === 'waiting_confirmation')
-  );
+  const shouldRestoreReservedStock =
+    (status === "cancelled" || status === "expired_unpaid") &&
+    (existingOrder.status === "pending_payment" ||
+      existingOrder.status === "waiting_confirmation")
 
   const updatedOrder = await prisma.$transaction(async (tx) => {
     if (shouldRestoreReservedStock) {
@@ -224,14 +295,17 @@ export const updateOrderStatus = async (
           id: orderId,
           storeId,
           status: {
-            in: ['pending_payment', 'waiting_confirmation'],
+            in: ["pending_payment", "waiting_confirmation"],
           },
         },
         data: { status },
-      });
+      })
 
       if (transition.count === 0) {
-        throw new AppError('Order status sudah berubah, silakan muat ulang data', 409);
+        throw new AppError(
+          "Order status sudah berubah, silakan muat ulang data",
+          409,
+        )
       }
 
       await restoreOrderStock(tx, {
@@ -239,25 +313,25 @@ export const updateOrderStatus = async (
         orderId,
         items: existingOrder.items,
         notes: `Restore stok otomatis karena order diubah ke status ${status}`,
-      });
+      })
 
       const order = await tx.order.findFirst({
         where: { id: orderId, storeId },
         include: adminOrderInclude,
-      });
+      })
 
       if (!order) {
-        throw new AppError('Order not found', 404);
+        throw new AppError("Order not found", 404)
       }
 
-      return order;
+      return order
     }
 
     return tx.order.update({
       where: { id: orderId },
       data: {
         status,
-        ...(status === 'shipped'
+        ...(status === "shipped"
           ? {
               adminCompletedAt: null,
               customerCompletedAt: null,
@@ -265,16 +339,16 @@ export const updateOrderStatus = async (
           : {}),
       },
       include: adminOrderInclude,
-    });
-  });
+    })
+  })
 
-  return toAdminOrderResponse(updatedOrder);
-};
+  return toAdminOrderResponse(updatedOrder)
+}
 
 export interface UpdateComplaintStatusInput {
-  status: 'accepted' | 'rejected' | 'resolved';
-  adminNote?: string;
-  adminId: string;
+  status: "accepted" | "rejected" | "resolved"
+  adminNote?: string
+  adminId: string
 }
 
 export const updateComplaintStatus = async (
@@ -290,38 +364,47 @@ export const updateComplaintStatus = async (
         orderId,
         storeId,
       },
-    });
+    })
 
     if (!complaint) {
-      throw new AppError('Komplain tidak ditemukan', 404);
+      throw new AppError("Komplain tidak ditemukan", 404)
     }
 
-    if (complaint.status === 'rejected' || complaint.status === 'resolved') {
-      throw new AppError('Komplain ini sudah ditutup', 400);
+    if (complaint.status === "rejected" || complaint.status === "resolved") {
+      throw new AppError("Komplain ini sudah ditutup", 400)
     }
 
-    if (input.status === 'accepted' && complaint.status !== 'open') {
-      throw new AppError('Komplain hanya bisa diterima dari status baru', 400);
+    if (input.status === "accepted" && complaint.status !== "open") {
+      throw new AppError("Komplain hanya bisa diterima dari status baru", 400)
     }
 
-    const now = new Date();
-    const adminNote = input.adminNote?.trim() ? input.adminNote.trim() : null;
+    const now = new Date()
+    const adminNote = input.adminNote?.trim() ? input.adminNote.trim() : null
 
     await tx.orderComplaint.update({
       where: { id: complaint.id },
       data: {
         status: input.status,
         adminNote,
-        acceptedAt: input.status === 'accepted' ? now : complaint.acceptedAt,
-        acceptedByAdminId: input.status === 'accepted' ? input.adminId : complaint.acceptedByAdminId,
-        rejectedAt: input.status === 'rejected' ? now : complaint.rejectedAt,
-        rejectedByAdminId: input.status === 'rejected' ? input.adminId : complaint.rejectedByAdminId,
-        resolvedAt: input.status === 'resolved' ? now : complaint.resolvedAt,
-        resolvedByAdminId: input.status === 'resolved' ? input.adminId : complaint.resolvedByAdminId,
+        acceptedAt: input.status === "accepted" ? now : complaint.acceptedAt,
+        acceptedByAdminId:
+          input.status === "accepted"
+            ? input.adminId
+            : complaint.acceptedByAdminId,
+        rejectedAt: input.status === "rejected" ? now : complaint.rejectedAt,
+        rejectedByAdminId:
+          input.status === "rejected"
+            ? input.adminId
+            : complaint.rejectedByAdminId,
+        resolvedAt: input.status === "resolved" ? now : complaint.resolvedAt,
+        resolvedByAdminId:
+          input.status === "resolved"
+            ? input.adminId
+            : complaint.resolvedByAdminId,
       },
-    });
+    })
 
-    if (input.status === 'rejected' || input.status === 'resolved') {
+    if (input.status === "rejected" || input.status === "resolved") {
       const order = await tx.order.findFirst({
         where: { id: orderId, storeId },
         select: {
@@ -330,24 +413,29 @@ export const updateComplaintStatus = async (
           adminCompletedAt: true,
           customerCompletedAt: true,
         },
-      });
+      })
 
-      if (order && order.status === 'shipped' && order.adminCompletedAt && order.customerCompletedAt) {
+      if (
+        order &&
+        order.status === "shipped" &&
+        order.adminCompletedAt &&
+        order.customerCompletedAt
+      ) {
         const openComplaintCount = await tx.orderComplaint.count({
           where: {
             orderId,
             storeId,
             status: { in: OPEN_COMPLAINT_STATUSES },
           },
-        });
+        })
 
         if (openComplaintCount === 0) {
           await tx.order.update({
             where: { id: orderId },
             data: {
-              status: 'done',
+              status: "done",
             },
-          });
+          })
         }
       }
     }
@@ -355,23 +443,23 @@ export const updateComplaintStatus = async (
     const order = await tx.order.findFirst({
       where: { id: orderId, storeId },
       include: adminOrderInclude,
-    });
+    })
 
     if (!order) {
-      throw new AppError('Order not found', 404);
+      throw new AppError("Order not found", 404)
     }
 
-    return order;
-  });
+    return order
+  })
 
-  return toAdminOrderResponse(updatedOrder);
-};
+  return toAdminOrderResponse(updatedOrder)
+}
 
 export interface ShipOrderInput {
-  shiftId: string;
-  deliveryDate: string;
-  driverName: string;
-  assignedByAdminId?: string;
+  shiftId: string
+  deliveryDate: string
+  driverName: string
+  assignedByAdminId?: string
 }
 
 export const shipOrder = async (
@@ -381,21 +469,21 @@ export const shipOrder = async (
 ) => {
   const order = await prisma.order.findFirst({
     where: { id: orderId, storeId },
-  });
+  })
 
   if (!order) {
-    throw new AppError('Order not found', 404);
+    throw new AppError("Order not found", 404)
   }
 
-  if (order.deliveryMethod !== 'delivery') {
-    throw new AppError('Only delivery orders can be scheduled for shipping', 400);
-  }
-
-  if (order.status !== 'paid') {
+  if (order.deliveryMethod !== "delivery") {
     throw new AppError(
-      `Cannot ship order with status: ${order.status}`,
+      "Only delivery orders can be scheduled for shipping",
       400,
-    );
+    )
+  }
+
+  if (order.status !== "paid") {
+    throw new AppError(`Cannot ship order with status: ${order.status}`, 400)
   }
 
   const shift = await prisma.shippingShift.findFirst({
@@ -404,16 +492,16 @@ export const shipOrder = async (
       storeId,
       isActive: true,
     },
-  });
+  })
 
   if (!shift) {
-    throw new AppError('Shipping shift not found or inactive', 404);
+    throw new AppError("Shipping shift not found or inactive", 404)
   }
 
-  const driverName = input.driverName.trim();
+  const driverName = input.driverName.trim()
 
   if (!driverName) {
-    throw new AppError('Driver name is required', 400);
+    throw new AppError("Driver name is required", 400)
   }
 
   const driver = await prisma.shippingDriver.findFirst({
@@ -422,16 +510,16 @@ export const shipOrder = async (
       name: driverName,
       isActive: true,
     },
-  });
+  })
 
   if (!driver) {
-    throw new AppError('Shipping driver not found or inactive', 404);
+    throw new AppError("Shipping driver not found or inactive", 404)
   }
 
-  const deliveryDate = new Date(`${input.deliveryDate}T00:00:00.000Z`);
+  const deliveryDate = new Date(`${input.deliveryDate}T00:00:00.000Z`)
 
   if (Number.isNaN(deliveryDate.getTime())) {
-    throw new AppError('Invalid delivery date', 400);
+    throw new AppError("Invalid delivery date", 400)
   }
 
   const updatedOrder = await prisma.$transaction(async (tx) => {
@@ -452,18 +540,54 @@ export const shipOrder = async (
         assignedAt: new Date(),
         assignedByAdminId: input.assignedByAdminId ?? null,
       },
-    });
+    })
 
     return tx.order.update({
       where: { id: order.id },
       data: {
-        status: 'shipped',
+        status: "shipped",
         adminCompletedAt: null,
         customerCompletedAt: null,
       },
       include: adminOrderInclude,
-    });
-  });
+    })
+  })
 
-  return toAdminOrderResponse(updatedOrder);
-};
+  notifyCustomerOrderShipped(
+    order.storeId,
+    order.id,
+    updatedOrder.publicOrderId,
+    order.customerId,
+    driverName,
+  )
+
+  // WA notification — fire-and-forget, fetch customer+store data async
+  void (async () => {
+    try {
+      const [customer, store] = await Promise.all([
+        prisma.customer.findUnique({
+          where: { id: order.customerId },
+          select: { phone: true, name: true },
+        }),
+        prisma.store.findUnique({
+          where: { id: order.storeId },
+          select: { name: true },
+        }),
+      ])
+      if (customer && store) {
+        void notifyOrderShippedWA(
+          order.storeId,
+          customer.phone,
+          customer.name ?? order.customerName ?? "Pelanggan",
+          updatedOrder.publicOrderId,
+          driverName,
+          store.name,
+        )
+      }
+    } catch {
+      /* ignore — WA failure must not affect main flow */
+    }
+  })()
+
+  return toAdminOrderResponse(updatedOrder)
+}

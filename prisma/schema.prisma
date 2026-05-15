@@ -69,6 +69,7 @@ model Store {
   variantDiscountRules                   VariantDiscountRule[]
   variants                               Variant[]
   cartItems                              CartItem[]
+  notifications                          Notification[]
 
   @@map("stores")
 }
@@ -277,6 +278,7 @@ model Customer {
   orderComplaints OrderComplaint[]
   store           Store             @relation(fields: [storeId], references: [id], onDelete: Cascade)
   orders          Order[]
+  notifications   Notification[]
 
   @@unique([storeId, phone])
   @@index([storeId])
@@ -333,6 +335,7 @@ model Order {
   store              Store                    @relation(fields: [storeId], references: [id], onDelete: Cascade)
   paymentProof       PaymentProof?
   complaints         OrderComplaint[]
+  notifications      Notification[]
 
   @@index([storeId])
   @@index([customerId])
@@ -675,4 +678,29 @@ enum BankName {
   Mandiri
   BankPapua
   BTN
+}
+
+enum RecipientRole {
+  admin
+  customer
+}
+
+model Notification {
+  id            String        @id @default(uuid())
+  orderId       String
+  order         Order         @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  storeId       String
+  store         Store         @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  customerId    String?
+  customer      Customer?     @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  recipientRole RecipientRole
+  message       String
+  isRead        Boolean       @default(false)
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+
+  @@unique([orderId, recipientRole])
+  @@index([storeId, recipientRole, isRead])
+  @@index([customerId, isRead])
+  @@map("notifications")
 }

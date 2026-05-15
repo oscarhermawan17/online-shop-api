@@ -31,6 +31,7 @@ import adminInventoryRoutes from "./modules/admin/inventory/inventory.routes"
 import adminShippingZonesRoutes from "./modules/admin/shipping-zones/shipping-zones.routes"
 import adminShippingDriversRoutes from "./modules/admin/shipping-drivers/shipping-drivers.routes"
 import adminShippingShiftsRoutes from "./modules/admin/shipping-shifts/shipping-shifts.routes"
+import adminNotificationsRoutes from "./modules/admin/notifications/notifications.routes"
 import publicShippingZonesRoutes from "./modules/store/shipping-zones.public.routes"
 
 // New routes for Category and Unit
@@ -42,6 +43,7 @@ import customerOrdersRoutes from "./modules/customer/orders/orders.routes"
 import customerAddressesRoutes from "./modules/customer/addresses/addresses.routes"
 import customerCreditRoutes from "./modules/customer/credit/credit.routes"
 import customerCartRoutes from "./modules/customer/cart/cart.routes"
+import customerNotificationsRoutes from "./modules/customer/notifications/notifications.routes"
 
 const app: Application = express()
 
@@ -88,12 +90,14 @@ app.use("/api/admin/shipping-drivers", adminShippingDriversRoutes)
 app.use("/api/admin/shipping-shifts", adminShippingShiftsRoutes)
 app.use("/api/admin/categories", categoryRoutes)
 app.use("/api/admin/units", unitRoutes)
+app.use("/api/admin/notifications", adminNotificationsRoutes)
 
 // Customer APIs (customer JWT required)
 app.use("/api/customer/orders", customerOrdersRoutes)
 app.use("/api/customer/addresses", customerAddressesRoutes)
 app.use("/api/customer/credit", customerCreditRoutes)
 app.use("/api/customer/cart", customerCartRoutes)
+app.use("/api/customer/notifications", customerNotificationsRoutes)
 
 // ─── 404 Handler ─────────────────────────────────────────────────────────────
 app.use((_req: Request, res: Response) => {
