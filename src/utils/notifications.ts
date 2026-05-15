@@ -162,3 +162,20 @@ export const notifyCustomerOrderExpired = (
     console.error("[Notification] notifyCustomerOrderExpired:", err),
   )
 }
+
+export const notifyAdminDeliveryOverdue = (
+  storeId: string,
+  orderId: string,
+  publicOrderId: string,
+  customerName: string,
+  driverName: string,
+): void => {
+  void upsertNotification({
+    storeId,
+    orderId,
+    recipientRole: "admin",
+    message: `Pengiriman order #${publicOrderId} (${customerName}) belum selesai setelah 48 jam. Kurir: ${driverName}.`,
+  }).catch((err) =>
+    console.error("[Notification] notifyAdminDeliveryOverdue:", err),
+  )
+}

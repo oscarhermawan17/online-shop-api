@@ -1,67 +1,74 @@
-import dotenv from 'dotenv';
-import fs from 'fs';
+import dotenv from "dotenv"
+import fs from "fs"
 
-dotenv.config();
-if (fs.existsSync('.env.local')) {
-  dotenv.config({ path: '.env.local', override: true });
+dotenv.config()
+if (fs.existsSync(".env.local")) {
+  dotenv.config({ path: ".env.local", override: true })
 }
 
-const PORT = process.env.PORT ?? 3000;
-const NODE_ENV = process.env.NODE_ENV ?? 'development';
+const PORT = process.env.PORT ?? 3000
+const NODE_ENV = process.env.NODE_ENV ?? "development"
 
-let server: any;
-let prisma: typeof import('./config/prisma').default | null = null;
+let server: any
+let prisma: typeof import("./config/prisma").default | null = null
 
 const startServer = async (): Promise<void> => {
   try {
-    const [{ default: app }, { default: prismaClient }, { startExpireOrdersJob }] = await Promise.all([
-      import('./app'),
-      import('./config/prisma'),
-      import('./jobs/expire-orders.job'),
-    ]);
-    prisma = prismaClient;
+    const [
+      { default: app },
+      { default: prismaClient },
+      { startExpireOrdersJob },
+      { startOverdueDeliveryJob },
+    ] = await Promise.all([
+      import("./app"),
+      import("./config/prisma"),
+      import("./jobs/expire-orders.job"),
+      import("./jobs/overdue-delivery.job"),
+    ])
+    prisma = prismaClient
 
     // Verify database connection on startup
-    await prisma.$connect();
-    console.log('✅ Database connected successfully');
+    await prisma.$connect()
+    console.log("✅ Database connected successfully")
 
     // Start background jobs
-    startExpireOrdersJob();
+    startExpireOrdersJob()
+    startOverdueDeliveryJob()
 
     server = app.listen(PORT, () => {
-      console.log(`🚀 Server running in [${NODE_ENV}] mode on port ${PORT}`);
-      console.log(`📍 Health check → http://localhost:${PORT}/api/health`);
-    });
+      console.log(`🚀 Server running in [${NODE_ENV}] mode on port ${PORT}`)
+      console.log(`📍 Health check → http://localhost:${PORT}/api/health`)
+    })
   } catch (error) {
-    console.error('❌ Failed to start server:', error);
+    console.error("❌ Failed to start server:", error)
     if (prisma) {
-      await prisma.$disconnect();
+      await prisma.$disconnect()
     }
-    process.exit(1);
+    process.exit(1)
   }
-};
+}
 
 // ─── Graceful Shutdown ────────────────────────────────────────────────────────
 const shutdown = async (signal: string): Promise<void> => {
-  console.log(`\n${signal} received — shutting down gracefully...`);
-  
+  console.log(`\n${signal} received — shutting down gracefully...`)
+
   if (server) {
     server.close(async () => {
       if (prisma) {
-        await prisma.$disconnect();
-        console.log('✅ Database disconnected');
+        await prisma.$disconnect()
+        console.log("✅ Database disconnected")
       }
-      process.exit(0);
-    });
+      process.exit(0)
+    })
   } else {
     if (prisma) {
-      await prisma.$disconnect();
+      await prisma.$disconnect()
     }
-    process.exit(0);
+    process.exit(0)
   }
-};
+}
 
-process.on('SIGTERM', () => shutdown('SIGTERM'));
-process.on('SIGINT', () => shutdown('SIGINT'));
+process.on("SIGTERM", () => shutdown("SIGTERM"))
+process.on("SIGINT", () => shutdown("SIGINT"))
 
-startServer();
+startServer()

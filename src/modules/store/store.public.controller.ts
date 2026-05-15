@@ -1,6 +1,6 @@
-import { Request, Response, NextFunction } from 'express';
-import prisma from '../../config/prisma';
-import { sendSuccess } from '../../utils/response';
+import { Request, Response, NextFunction } from "express"
+import prisma from "../../config/prisma"
+import { sendSuccess } from "../../utils/response"
 
 // ─── GET /store ───────────────────────────────────────────────────────────────
 
@@ -17,12 +17,16 @@ export const getPublicStore = async (
         address: true,
         logoUrl: true,
         qrisImageUrl: true,
+        whatsappNumber: true,
+        instagramUrl: true,
+        tiktokUrl: true,
+        youtubeUrl: true,
         deliveryRetailMinimumOrder: true,
         deliveryStoreMinimumOrder: true,
         deliveryRetailFreeShippingMinimumOrder: true,
         deliveryStoreFreeShippingMinimumOrder: true,
         bankAccounts: {
-          orderBy: { sortOrder: 'asc' as const },
+          orderBy: { sortOrder: "asc" as const },
           select: {
             id: true,
             bankName: true,
@@ -31,13 +35,13 @@ export const getPublicStore = async (
           },
         },
       },
-    });
+    })
     if (!store) {
-      res.status(404).json({ success: false, message: 'Store not found' });
-      return;
+      res.status(404).json({ success: false, message: "Store not found" })
+      return
     }
-    sendSuccess(res, store, 'Store fetched successfully');
+    sendSuccess(res, store, "Store fetched successfully")
   } catch (error) {
-    next(error);
+    next(error)
   }
-};
+}

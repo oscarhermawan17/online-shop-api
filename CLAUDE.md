@@ -1,6 +1,7 @@
 # online-shop-api — Claude Context
 
 ## Stack
+
 - Node.js + Express v5 + TypeScript + Prisma ORM
 - Database: Supabase (PostgreSQL) for prod; Docker PostgreSQL for stg
 - Port: **4000** (prod) / **8000** (stg)
@@ -42,6 +43,7 @@ docker compose exec api-stg npm run prisma:seed
 Stg `DATABASE_URL=postgresql://postgres:postgres@postgres:5432/online_shop_stg` (internal Docker hostname).
 
 Commands:
+
 - Reset DB: `npx prisma db push --force-reset`
 - Seed: `npm run prisma:seed`
 
@@ -55,11 +57,11 @@ Seed uses static `STORE_ID = process.env.STORE_ID_DEFAULT ?? 'a0eebc99-9c0b-4ef8
 - Every tenant table has `storeId` — already complete, nothing needs to be added
 - 3 identity types, each a separate table with its own auth flow:
 
-| Table | storeId | Auth endpoint | Status |
-|---|---|---|---|
-| `Superadmin` | ❌ none | `/api/superadmin/auth/login` | Future — not built yet |
-| `Admin` | ✅ required | `/api/auth/login` | Done |
-| `Customer` | ✅ required | `/api/customer-auth/login` | Done |
+| Table        | storeId     | Auth endpoint                | Status                 |
+| ------------ | ----------- | ---------------------------- | ---------------------- |
+| `Superadmin` | ❌ none     | `/api/superadmin/auth/login` | Future — not built yet |
+| `Admin`      | ✅ required | `/api/auth/login`            | Done                   |
+| `Customer`   | ✅ required | `/api/customer-auth/login`   | Done                   |
 
 - Models correctly WITHOUT storeId: `Store` (is the tenant), `HealthCheck` (not tenant data), `VariantOptionValue` (pure join table, inherits scope via Variant)
 - When superadmin is needed: add a new `Superadmin` model + new middleware — zero changes to existing admin/customer code
@@ -70,36 +72,37 @@ Seed uses static `STORE_ID = process.env.STORE_ID_DEFAULT ?? 'a0eebc99-9c0b-4ef8
 
 All models have `storeId` except Store, HealthCheck, and VariantOptionValue (intentional — see above).
 
-| Model | Purpose |
-|---|---|
-| Store | Tenant config (QRIS, minimum orders, free shipping thresholds) — bank accounts are in StoreBankAccount |
-| StoreBankAccount | Multiple bank accounts per store; fields: bankName (BankName enum), accountNumber, accountHolder, sortOrder; onDelete Cascade from Store |
-| Admin | Admin accounts; roles: owner / manager / staff |
-| Customer | Store-scoped customers; password nullable (guest); `type`: base (guest pricing) or wholesale (retail pricing); `avatarUrl` nullable |
-| CustomerAddress | Saved delivery addresses with optional GPS coords |
-| Product | Has basePrice + wholesalePrice; optional unitId + categories (many-to-many) |
-| ProductImage | Gallery images |
-| ProductOption | Option types (e.g. "Size", "Color") |
-| ProductOptionValue | Option values (e.g. "M", "Black") |
-| Variant | Sellable SKU; priceOverride, wholesalePriceOverride, stock, imageUrl |
-| VariantOptionValue | Join: Variant ↔ ProductOptionValue |
-| VariantDiscountRule | Per-variant discount rules: triggerType (quantity/line_subtotal), valueType (percentage/fixed_amount), applyMode (per_item/line_total), customerType filter, priority, isActive |
-| ProductDiscountRule | Same structure as VariantDiscountRule but scoped to a product; can target specific variantIds via `targetVariantIds[]` |
-| ProductDiscount | Legacy simple discount: normalDiscount + normalDiscountActive (guest), retailDiscount + retailDiscountActive (ritel); startDate/endDate nullable |
-| Order | status enum, expiresAt (30mins for bank transfer; null for credit), paymentMethod, deliveryMethod, termOfPaymentSnapshot, adminCompletedAt, customerCompletedAt, creditSettledAt |
-| OrderItem | Price/name snapshot; discountAmount, discountRuleName, originalPrice for discount tracking |
-| PaymentProof | Bank transfer image upload |
-| ShippingZone | District → cost mapping |
-| ShippingDriver | Courier master list |
-| ShippingShift | Delivery shift templates |
-| OrderShippingAssignment | Courier dispatch record per order |
-| OrderComplaint | Customer complaint per order; evidenceImageUrls (JSON), status: open/accepted/rejected/resolved; admin lifecycle fields |
-| StockMovement | Ledger of every stock in/out event; category: initial_stock/add_stock/sale/restore; balanceAfter tracks running stock; linked to Admin, Product, Variant |
-| CarouselSlide | Promotional banner slides; title, subtitle, badge, imageUrl, backgroundColor, showText, isActive, sortOrder; max 10 per store |
-| Category | Product categories with icon; many-to-many with Product |
-| Unit | Product unit of measure (e.g. pcs, kg); one-to-many with Product |
-| CustomerCredit | Per-customer credit limit + termOfPayment (days); admin-managed; one-to-one with Customer |
-| CreditPayment | Partial/full payment records against a credit order; many-to-one with Order |
+| Model                   | Purpose                                                                                                                                                                          |
+| ----------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Store                   | Tenant config (QRIS, minimum orders, free shipping thresholds) — bank accounts are in StoreBankAccount                                                                           |
+| StoreBankAccount        | Multiple bank accounts per store; fields: bankName (BankName enum), accountNumber, accountHolder, sortOrder; onDelete Cascade from Store                                         |
+| Admin                   | Admin accounts; roles: owner / manager / staff                                                                                                                                   |
+| Customer                | Store-scoped customers; password nullable (guest); `type`: base (guest pricing) or wholesale (retail pricing); `avatarUrl` nullable                                              |
+| CustomerAddress         | Saved delivery addresses with optional GPS coords                                                                                                                                |
+| Product                 | Has basePrice + wholesalePrice; optional unitId + categories (many-to-many)                                                                                                      |
+| ProductImage            | Gallery images                                                                                                                                                                   |
+| ProductOption           | Option types (e.g. "Size", "Color")                                                                                                                                              |
+| ProductOptionValue      | Option values (e.g. "M", "Black")                                                                                                                                                |
+| Variant                 | Sellable SKU; priceOverride, wholesalePriceOverride, stock, imageUrl                                                                                                             |
+| VariantOptionValue      | Join: Variant ↔ ProductOptionValue                                                                                                                                               |
+| VariantDiscountRule     | Per-variant discount rules: triggerType (quantity/line_subtotal), valueType (percentage/fixed_amount), applyMode (per_item/line_total), customerType filter, priority, isActive  |
+| ProductDiscountRule     | Same structure as VariantDiscountRule but scoped to a product; can target specific variantIds via `targetVariantIds[]`                                                           |
+| ProductDiscount         | Legacy simple discount: normalDiscount + normalDiscountActive (guest), retailDiscount + retailDiscountActive (ritel); startDate/endDate nullable                                 |
+| Order                   | status enum, expiresAt (30mins for bank transfer; null for credit), paymentMethod, deliveryMethod, termOfPaymentSnapshot, adminCompletedAt, customerCompletedAt, creditSettledAt |
+| OrderItem               | Price/name snapshot; discountAmount, discountRuleName, originalPrice for discount tracking                                                                                       |
+| PaymentProof            | Bank transfer image upload                                                                                                                                                       |
+| ShippingZone            | District → cost mapping                                                                                                                                                          |
+| ShippingDriver          | Courier master list                                                                                                                                                              |
+| ShippingShift           | Delivery shift templates                                                                                                                                                         |
+| OrderShippingAssignment | Courier dispatch record per order                                                                                                                                                |
+| OrderComplaint          | Customer complaint per order; evidenceImageUrls (JSON), status: open/accepted/rejected/resolved; admin lifecycle fields                                                          |
+| StockMovement           | Ledger of every stock in/out event; category: initial_stock/add_stock/sale/restore; balanceAfter tracks running stock; linked to Admin, Product, Variant                         |
+| CarouselSlide           | Promotional banner slides; title, subtitle, badge, imageUrl, backgroundColor, showText, isActive, sortOrder; max 10 per store                                                    |
+| Category                | Product categories with icon; many-to-many with Product                                                                                                                          |
+| Unit                    | Product unit of measure (e.g. pcs, kg); one-to-many with Product                                                                                                                 |
+| CustomerCredit          | Per-customer credit limit + termOfPayment (days); admin-managed; one-to-one with Customer                                                                                        |
+| CreditPayment           | Partial/full payment records against a credit order; many-to-one with Order                                                                                                      |
+| CartItem                | Persistent cart per customer; `@@unique([customerId, productId, variantId])`; quantity clamped to variant stock on upsert                                                        |
 
 ---
 
@@ -116,6 +119,7 @@ All models have `storeId` except Store, HealthCheck, and VariantOptionValue (int
 ## All Endpoints
 
 ### Public (no auth)
+
 ```
 GET  /api/health
 GET  /api/store
@@ -132,6 +136,7 @@ POST /api/customer-auth/login   (customer login)
 ```
 
 ### Customer (requireCustomerAuth)
+
 ```
 GET    /api/customer/orders
 PATCH  /api/customer/orders/:id/complete        (mark order as done by customer)
@@ -141,9 +146,16 @@ POST   /api/customer/addresses
 PATCH  /api/customer/addresses/:id
 DELETE /api/customer/addresses/:id
 GET    /api/customer/credit
+GET    /api/customer/cart
+POST   /api/customer/cart                       (add item)
+POST   /api/customer/cart/merge                 (merge guest cart on login)
+PUT    /api/customer/cart/:productId/:variantId  (set quantity)
+DELETE /api/customer/cart/:productId/:variantId  (remove item)
+DELETE /api/customer/cart                       (clear cart)
 ```
 
 ### Admin (requireAuth + requireRole)
+
 ```
 # Store — manager+
 GET   /api/admin/store
@@ -223,6 +235,7 @@ GET                               /api/admin/units/:id
 ---
 
 ## Auth Middleware
+
 - `requireAuth()` — validates admin JWT
 - `requireRole(...roles)` — role hierarchy: owner ≥ manager ≥ staff
 - `requireCustomerAuth()` — mandatory customer JWT
@@ -235,6 +248,7 @@ GET                               /api/admin/units/:id
 Two systems coexist. The rule-based system (3.6/3.7) is newer and takes precedence at checkout.
 
 ### Rule-Based (VariantDiscountRule + ProductDiscountRule)
+
 - **Trigger**: `quantity` (min/max units in cart) or `line_subtotal` (min/max subtotal for line)
 - **Value**: `percentage` (%) or `fixed_amount` (Rp)
 - **Apply**: `per_item` (discount per unit) or `line_total` (discount on total line)
@@ -243,6 +257,7 @@ Two systems coexist. The rule-based system (3.6/3.7) is newer and takes preceden
 - Applied in `src/utils/variant-discount.ts` (used by checkout + public products)
 
 ### Legacy (ProductDiscount)
+
 - Simple flat % per product for normal vs retail price
 - Still functional; used if no rule-based discount applies
 
@@ -251,6 +266,7 @@ Two systems coexist. The rule-based system (3.6/3.7) is newer and takes preceden
 ## Inventory / Stock Movement
 
 Every stock change creates a `StockMovement` row:
+
 - `initial_stock` — first stock set when variant created/seeded
 - `add_stock` — manual admin adjustment via `POST /admin/inventory/add`
 - `sale` — decremented at checkout (inside transaction)
@@ -294,12 +310,14 @@ Export at `GET /admin/inventory/export` → `.xls` file via `src/utils/xls.ts`.
 | File | Schedule | Purpose |
 |---|---|---|
 | `expire-orders.job.ts` | `ORDER_EXPIRY_CRON_MINUTES` (default 5) | Finds `pending_payment` orders past `expiresAt`, restores stock via `restoreOrderStock` (creates StockMovement records), sets status to `expired_unpaid` |
+| `overdue-delivery.job.ts` | every hour (`0 * * * *`) | Finds `shipped` **delivery** orders where `assignedAt > 48h` ago and `overdueNotifiedAt` is null; sends WA to admin via `notifyAdminDeliveryOverdue`; sets `overdueNotifiedAt` (fires once per order) |
 
 Jobs are started in `server.ts` after DB connects. All jobs are inside the Node.js process — no system cron or VPS configuration needed.
 
 ---
 
 ## Order Expiry Notes
+
 - `ORDER_EXPIRY_MINUTES=30` in `.env` — controls `expiresAt` set at checkout (payment window)
 - `ORDER_EXPIRY_CRON_MINUTES=5` in `.env` — controls how often the expiry cron check runs (default 5)
 - node-cron job in `src/jobs/expire-orders.job.ts` runs inside the API process — no VPS/system cron needed
@@ -314,11 +332,13 @@ Jobs are started in `server.ts` after DB connects. All jobs are inside the Node.
 Uses **Fonnte** — Indonesian WA gateway. No Meta Business API approval needed. Works with a regular WhatsApp number (scan QR on fonnte.com dashboard).
 
 **Env vars:**
+
 - `FONNTE_TOKEN` — API token from fonnte.com
 - `FONNTE_ENABLED=true` — must be set to enable (default false, logs to console instead)
 - `ADMIN_WHATSAPP` — admin phone number (format: `628xx...`)
 
 **Behavior:**
+
 - All sends are fire-and-forget using `void` — WA failure never crashes the main API flow
 - Phone numbers normalized: `08xx → 628xx` automatically
 - API uses `multipart/form-data` with `Authorization: TOKEN` header (not Bearer)
@@ -328,22 +348,22 @@ Uses **Fonnte** — Indonesian WA gateway. No Meta Business API approval needed.
 |---|---|---|
 | `notifyOrderPlaced` | Customer places order | ✅ checkout.service.ts |
 | `notifyAdminNewOrder` | Customer places order | ✅ checkout.service.ts |
-| `notifyAdminPaymentProof` | Customer uploads payment proof | ❌ not wired yet |
-| `notifyPaymentConfirmed` | Admin confirms payment | ❌ not wired yet |
-| `notifyOrderShipped` | Admin assigns courier (ship order) | ❌ not wired yet |
-| `notifyOrderExpired` | Cron job expires unpaid order | ❌ not wired yet |
+| `notifyAdminDeliveryOverdue` | Cron job — delivery not completed after 48h (delivery orders only) → admin | ✅ overdue-delivery.job.ts |
+| `notifyAdminComplaint` | Customer files complaint (delivery orders only) → admin | ✅ customer/orders/orders.service.ts |
 
 ---
 
 ## Task Progress (vs task.md)
 
 ### ✅ Done
+
 - 0.1–0.7 All infra (Docker, CI/CD, staging, MinIO, local PostgreSQL, node-cron)
 - 0.8 Migrate prod to local stack
 - 0.9 Fix Admin.phone → @@unique([storeId, phone])
 - 1.1, 1.3 Customer auth + pricing
 - 1.5 Credit term (termOfPayment per customer, snapshotted at checkout)
 - 2.2 Order expiry + auto-cancel (node-cron + lazy fallback)
+- 2.1 Cart management (CartItem model, full CRUD at /customer/cart, guest merge on login)
 - 2.3 Minimum order validation
 - 2.4 Order completion (customer + credit settle)
 - 3.4 Legacy product discount
@@ -357,14 +377,18 @@ Uses **Fonnte** — Indonesian WA gateway. No Meta Business API approval needed.
 - 7.1 Real-time stock visibility
 - 7.2 Stock movement ledger + export
 - 8.1 Sales dashboard
+- 8.2 Login activity chart (login events to DB + chart in admin dashboard)
 - 9.1 Complaint submission + admin lifecycle
 
+- 5.5 Delivery SLA — overdue WA + in-app notification done (48h cron, delivery only)
+- 9.3 WhatsApp notifications — order placed + delivery overdue + complaint (all scoped to delivery orders; other events excluded by design)
+
 ### ⚠️ Partial
+
 - 3.5 Shipping discount — free shipping threshold done; partial % discount not implemented
-- 9.3 WhatsApp notifications — order placed wired; payment proof, confirm, ship, expired not wired yet
 
 ### ❌ Not Started / Todo
+
 - 1.4 Auto credit eligibility (3 cash transactions gate)
-- 2.1 Persistent cart (backend)
 - 4.1/4.2 Voucher system
 - 5.5 Delivery SLA tracking

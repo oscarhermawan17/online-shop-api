@@ -137,3 +137,57 @@ export const notifyAdminNewOrder = async (
 
   await sendWhatsApp(storeId, adminWhatsapp, message)
 }
+
+export const notifyAdminDeliveryOverdue = async (
+  storeId: string,
+  publicOrderId: string,
+  customerName: string,
+  customerAddress: string,
+  driverName: string,
+  assignedAt: Date,
+): Promise<void> => {
+  const { adminWhatsapp } = await getWAConfig(storeId)
+  if (!adminWhatsapp) return
+
+  const assignedDate = assignedAt.toLocaleDateString("id-ID", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  })
+
+  const message =
+    `⚠️ *Pengiriman Belum Selesai*\n\n` +
+    `Order: *#${publicOrderId}*\n` +
+    `Customer: ${customerName}\n` +
+    `Alamat: ${customerAddress}\n` +
+    `Kurir: ${driverName}\n` +
+    `Dikirim: ${assignedDate}\n\n` +
+    `Order belum selesai setelah 48 jam. Tolong segera tindak lanjuti.`
+
+  await sendWhatsApp(storeId, adminWhatsapp, message)
+}
+
+export const notifyAdminComplaint = async (
+  storeId: string,
+  publicOrderId: string,
+  customerName: string,
+  customerAddress: string,
+  driverName: string,
+  complaintComment: string,
+): Promise<void> => {
+  const { adminWhatsapp } = await getWAConfig(storeId)
+  if (!adminWhatsapp) return
+
+  const message =
+    `📢 *Komplain Baru Masuk*\n\n` +
+    `Order: *#${publicOrderId}*\n` +
+    `Customer: ${customerName}\n` +
+    `Alamat: ${customerAddress}\n` +
+    `Kurir: ${driverName}\n` +
+    `Komplain: ${complaintComment}\n\n` +
+    `Segera periksa di dashboard.`
+
+  await sendWhatsApp(storeId, adminWhatsapp, message)
+}

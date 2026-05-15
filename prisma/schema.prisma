@@ -42,6 +42,9 @@ model Store {
   fonnteEnabled                          Boolean @default(false)
   fonnteToken                            String?
   adminWhatsapp                          String?
+  instagramUrl                           String?
+  tiktokUrl                              String?
+  youtubeUrl                             String?
   admins                                 Admin[]
   bankAccounts                           StoreBankAccount[]
   carouselSlides                         CarouselSlide[]
@@ -463,6 +466,7 @@ model OrderShippingAssignment {
   driverName        String
   assignedAt        DateTime      @default(now())
   assignedByAdminId String?
+  overdueNotifiedAt DateTime?
   order             Order         @relation(fields: [orderId], references: [id], onDelete: Cascade)
   shift             ShippingShift @relation(fields: [shiftId], references: [id])
   store             Store         @relation(fields: [storeId], references: [id], onDelete: Cascade)
