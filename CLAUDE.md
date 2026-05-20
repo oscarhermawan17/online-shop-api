@@ -23,7 +23,7 @@ DATABASE_URL=postgresql://postgres.xceemlzendhddaghwerv:...@aws-1-ap-southeast-1
 # DATABASE_URL=postgresql://postgres:...@db.xceemlzendhddaghwerv.supabase.co:5432/postgres
 ```
 
-**Push/seed workflow (prod):** switch to Telkomsel → uncomment direct URL → run push/seed → switch back to pooler.
+**Migrate/seed workflow (prod):** switch to Telkomsel → uncomment direct URL → run `migrate deploy` and/or seed → switch back to pooler.
 
 ### Stg (local Docker postgres)
 
@@ -31,12 +31,12 @@ Stg uses a local PostgreSQL container. No network switching needed.
 
 ```bash
 # From local-stg/ (docker compose must be running)
-docker compose exec api-stg npx prisma db push
+docker compose exec api-stg npx prisma migrate deploy
 docker compose exec api-stg npm run prisma:seed
 
 # Fresh reset:
 docker compose down -v && docker compose up -d
-docker compose exec api-stg npx prisma db push
+docker compose exec api-stg npx prisma migrate deploy
 docker compose exec api-stg npm run prisma:seed
 ```
 
@@ -44,7 +44,7 @@ Stg `DATABASE_URL=postgresql://postgres:postgres@postgres:5432/online_shop_stg` 
 
 Commands:
 
-- Reset DB: `npx prisma db push --force-reset`
+- Reset DB: `npx prisma migrate reset`
 - Seed: `npm run prisma:seed`
 
 Seed uses static `STORE_ID = process.env.STORE_ID_DEFAULT ?? 'a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11'`
@@ -111,7 +111,7 @@ All models have `storeId` except Store, HealthCheck, and VariantOptionValue (int
 - **Prod**: `ghcr.io/oscarhermawan17/online-shop-api:latest` — port 4000
 - **Stg**: `ghcr.io/oscarhermawan17/online-shop-api:staging` — port 8000
 - CI/CD: push to `main` → `:latest`, push to `stg` → `:staging`, auto-deploys to VPS
-- CI/CD runs `npx prisma db push --accept-data-loss` before container starts (using new image + `--network umkm_default`)
+- CI/CD runs `npx prisma migrate deploy` before container starts (using new image + `--network umkm_default`)
 - VPS path: `/home/ubuntu/umkm/docker-compose.yaml`
 
 ---

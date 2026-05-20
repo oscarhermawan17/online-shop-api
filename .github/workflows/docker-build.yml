@@ -60,13 +60,13 @@ jobs:
             # Pull latest image
             docker compose pull $SERVICE
 
-            # Run db push BEFORE starting the container
+            # Run migrate deploy BEFORE starting the container
             # Uses the new image so schema is always in sync with the code
             docker run --rm \
               --network umkm_default \
               --env-file /home/ubuntu/umkm/$ENV_FILE \
               $IMAGE \
-              npx prisma db push --accept-data-loss
+              npx prisma migrate deploy
 
             # Start the container with the new image
             docker compose up -d --force-recreate $SERVICE
